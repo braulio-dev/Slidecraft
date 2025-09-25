@@ -91,7 +91,7 @@
   min-height: 24px;
 }
 
-/* Markdown styling */
+/* markdown styling */
 .message-text h1,
 .message-text h2,
 .message-text h3,
@@ -154,7 +154,7 @@
   color: #9ca3af;
 }
 
-/* Loading animation */
+/* loading animation */
 .loading-dots {
   display: flex;
   gap: 4px;

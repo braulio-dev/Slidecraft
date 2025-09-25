@@ -24,7 +24,7 @@ function ChatInput({ onSendMessage, disabled }) {
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = 'auto';
-      const maxHeight = 200; // Max height in pixels
+      const maxHeight = 200; // pixels
       const newHeight = Math.min(textarea.scrollHeight, maxHeight);
       textarea.style.height = `${newHeight}px`;
     }

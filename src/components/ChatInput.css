@@ -84,7 +84,7 @@
   transform: translateX(1px);
 }
 
-/* Scrollbar styling for textarea */
+/* scrollbar */
 .chat-textarea::-webkit-scrollbar {
   width: 4px;
 }

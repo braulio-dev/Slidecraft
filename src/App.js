@@ -49,7 +49,7 @@ function App() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/generate', {
+      const response = await fetch('http://localhost:11434/api/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -62,7 +62,7 @@ function App() {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error trying to reach ${response.url}! status: ${response.status}`);
       }
 
       const data = await response.json();

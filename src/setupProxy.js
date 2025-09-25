@@ -9,7 +9,7 @@ module.exports = function(app) {
       secure: false,
       logLevel: 'debug',
       pathRewrite: {
-        '^/api': '/api', // Ollama expects /api prefix
+        '^/api': '/api', // Ollama uses /api prefix
       },
       onError: function (err, req, res) {
         console.error('Proxy error:', err);
