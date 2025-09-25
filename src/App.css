@@ -1,0 +1,101 @@
+.app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #343541;
+}
+
+.app-header {
+  background-color: #40414f;
+  border-bottom: 1px solid #565869;
+  padding: 16px 24px;
+  flex-shrink: 0;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.app-header h1 {
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.header-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.clear-button {
+  background-color: #565869;
+  color: #ffffff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.clear-button:hover {
+  background-color: #6c6d7f;
+}
+
+.chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  height: calc(100vh - 80px);
+}
+
+.messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.welcome-message {
+  text-align: center;
+  padding: 48px 24px;
+  max-width: 600px;
+  margin: auto;
+}
+
+.welcome-message h2 {
+  color: #ffffff;
+  font-size: 32px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.welcome-message p {
+  color: #9ca3af;
+  font-size: 18px;
+  margin-bottom: 24px;
+}
+
+.model-info {
+  background-color: #40414f;
+  color: #9ca3af;
+  padding: 12px 20px;
+  border-radius: 12px;
+  border: 1px solid #565869;
+  display: inline-block;
+  font-size: 14px;
+}
+
+.model-info strong {
+  color: #ffffff;
+}

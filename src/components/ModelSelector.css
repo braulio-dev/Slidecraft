@@ -1,0 +1,39 @@
+.model-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-label {
+  color: #9ca3af;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.model-select {
+  background-color: #565869;
+  color: #ffffff;
+  border: 1px solid #6c6d7f;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s;
+  min-width: 200px;
+}
+
+.model-select:hover {
+  background-color: #6c6d7f;
+}
+
+.model-select:focus {
+  border-color: #10a37f;
+  box-shadow: 0 0 0 2px rgba(16, 163, 127, 0.2);
+}
+
+.model-select option {
+  background-color: #40414f;
+  color: #ffffff;
+  padding: 8px;
+}
