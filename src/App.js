@@ -7,7 +7,7 @@ import './App.css';
 function App() {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('qwen2.5:7b-instruct');
+  const [selectedModel, setSelectedModel] = useState('mistral:latest');
   const [availableModels, setAvailableModels] = useState([]);
   const messagesEndRef = useRef(null);
 
@@ -37,7 +37,7 @@ function App() {
     } catch (error) {
       console.error('Failed to fetch models:', error);
       // Fallback to default model
-      setAvailableModels(['qwen2.5:7b-instruct']);
+      setAvailableModels(['mistral:latest']);
     }
   };
 
