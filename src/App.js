@@ -41,7 +41,8 @@ function App() {
     }
   };
 
-  const sendMessage = async (message) => {
+
+const sendMessage = async (message) => {
   if (!message.trim()) return;
 
   const userMessage = { role: 'user', content: message, timestamp: new Date() };
@@ -50,25 +51,24 @@ function App() {
   setIsLoading(true);
 
   try {
+    // --- Enviar mensaje a Ollama ---
     const response = await fetch('http://localhost:11434/api/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: selectedModel,
-        messages: [ 
-    {
-      role: "system",
-      content: `You are an AI that generates professional presentations using Markdown.
+        messages: [
+          {
+            role: "system",
+            content: `You are an AI that generates professional presentations using Markdown.
 Each slide should start with "##", and use bullet points "-" for content.
 Respond only in Markdown syntax suitable for conversion by Pandoc.`
-    },
-    ...updatedMessages.map(m => ({
-          role: m.role,
-          content: m.content
-        })),
-      ],
+          },
+          ...updatedMessages.map(m => ({
+            role: m.role,
+            content: m.content
+          })),
+        ],
         stream: false
       }),
     });
@@ -78,18 +78,48 @@ Respond only in Markdown syntax suitable for conversion by Pandoc.`
     }
 
     const data = await response.json();
-    const assistantMessage = { 
-      role: 'assistant', 
-      content: data.message?.content || data.response || '(No response)', 
-      timestamp: new Date() 
+    const markdownResponse =
+      data.message?.content ||
+      data.response ||
+      "(No response)";
+
+    const assistantMessage = {
+      role: 'assistant',
+      content: markdownResponse,
+      timestamp: new Date()
     };
-    
+
     setMessages(prev => [...prev, assistantMessage]);
+
+    // --- Enviar el Markdown al servidor Pandoc ---
+    const convertResponse = await fetch('http://localhost:4000/convert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ markdown: markdownResponse })
+    });
+
+    if (!convertResponse.ok) {
+      throw new Error(`Conversion failed: ${convertResponse.statusText}`);
+    }
+
+    // --- Descargar el archivo PPTX generado ---
+    const blob = await convertResponse.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `presentation_${Date.now()}.pptx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+
+    console.log("✅ Presentation created and downloaded automatically.");
+
   } catch (error) {
     console.error('Error sending message:', error);
-    const errorMessage = { 
-      role: 'assistant', 
-      content: 'Sorry, I encountered an error. Please make sure Ollama is running and the model is available.', 
+    const errorMessage = {
+      role: 'assistant',
+      content: '⚠️ There was a problem generating the presentation. Check if both servers are running (Ollama + Pandoc).',
       timestamp: new Date(),
       isError: true
     };
