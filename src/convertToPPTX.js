@@ -1,30 +1,24 @@
 import { exec } from "child_process";
 import fs from "fs";
-import path from "path";
 
-export async function convertMarkdownToPPTX(markdownText, outputFile = "presentation.pptx") {
+export async function convertMarkdownToPPTX(markdownText, outputFile, templatePath) {
   const tempFile = "temp.md";
   fs.writeFileSync(tempFile, markdownText);
 
-  const templatePath = path.join(__dirname, "../templates/template.pptx");
-  console.log("DEBUG: templatePath ->", templatePath);
-  if (!fs.existsSync(templatePath)) {
-    fs.unlinkSync(tempFile);
-    throw new Error("Template not found: " + templatePath);
-  }
+  console.log("🎨 Using template:", templatePath);
 
   const command = `pandoc "${tempFile}" -o "${outputFile}" --from markdown --to pptx --reference-doc="${templatePath}"`;
-  console.log("DEBUG: pandoc command ->", command);
+  console.log("🧠 Running command:", command);
 
   return new Promise((resolve, reject) => {
     exec(command, { shell: true }, (error, stdout, stderr) => {
-      console.log("pandoc stdout:", stdout);
-      console.log("pandoc stderr:", stderr);
+      console.log("Pandoc stdout:", stdout);
+      if (stderr) console.log("Pandoc stderr:", stderr);
       if (error) {
-        console.error("Pandoc conversion failed:", stderr || error);
+        console.error("❌ Pandoc conversion failed:", stderr || error);
         reject(error);
       } else {
-        console.log(`✅ Markdown convertido a ${outputFile}`);
+        console.log(`✅ Markdown converted to: ${outputFile}`);
         fs.unlinkSync(tempFile);
         resolve(outputFile);
       }
