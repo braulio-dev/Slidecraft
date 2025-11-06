@@ -7,7 +7,7 @@ import './App.css';
 function App() {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('qwen2.5:7b-instruct');
+  const [selectedModel, setSelectedModel] = useState('llama3.1:latest');
   const [availableModels, setAvailableModels] = useState([]);
   const messagesEndRef = useRef(null);
 
@@ -37,55 +37,98 @@ function App() {
     } catch (error) {
       console.error('Failed to fetch models:', error);
       // Fallback to default model
-      setAvailableModels(['qwen2.5:7b-instruct']);
+      setAvailableModels(['mistral:latest'], ['llama3.1:latest']);
     }
   };
 
-  const sendMessage = async (message) => {
-    if (!message.trim()) return;
 
-    const userMessage = { role: 'user', content: message, timestamp: new Date() };
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
+const sendMessage = async (message) => {
+  if (!message.trim()) return;
 
-    try {
-      const response = await fetch('http://localhost:11434/api/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: selectedModel,
-          prompt: message,
-          stream: false
-        }),
-      });
+  const userMessage = { role: 'user', content: message, timestamp: new Date() };
+  const updatedMessages = [...messages, userMessage];
+  setMessages(updatedMessages);
+  setIsLoading(true);
 
-      if (!response.ok) {
-        throw new Error(`HTTP error trying to reach ${response.url}! status: ${response.status}`);
-      }
+  try {
+    // --- Enviar mensaje a Ollama ---
+    const response = await fetch('http://localhost:11434/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: selectedModel,
+        messages: [
+          {
+            role: "system",
+            content: `You are an AI that generates professional presentations using Markdown.
+Each slide should start with "##", and use bullet points "-" for content.
+Respond only in Markdown syntax suitable for conversion by Pandoc.`
+          },
+          ...updatedMessages.map(m => ({
+            role: m.role,
+            content: m.content
+          })),
+        ],
+        stream: false
+      }),
+    });
 
-      const data = await response.json();
-      const assistantMessage = { 
-        role: 'assistant', 
-        content: data.response, 
-        timestamp: new Date() 
-      };
-      
-      setMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      console.error('Error sending message:', error);
-      const errorMessage = { 
-        role: 'assistant', 
-        content: 'Sorry, I encountered an error. Please make sure Ollama is running and the model is available.', 
-        timestamp: new Date(),
-        isError: true
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-  };
+
+    const data = await response.json();
+    const markdownResponse =
+      data.message?.content ||
+      data.response ||
+      "(No response)";
+
+    const assistantMessage = {
+      role: 'assistant',
+      content: markdownResponse,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, assistantMessage]);
+
+    // --- Enviar el Markdown al servidor Pandoc ---
+    const convertResponse = await fetch('http://localhost:4000/convert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ markdown: markdownResponse })
+    });
+
+    if (!convertResponse.ok) {
+      throw new Error(`Conversion failed: ${convertResponse.statusText}`);
+    }
+
+    // --- Descargar el archivo PPTX generado ---
+    const blob = await convertResponse.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `presentation_${Date.now()}.pptx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+
+    console.log("✅ Presentation created and downloaded automatically.");
+
+  } catch (error) {
+    console.error('Error sending message:', error);
+    const errorMessage = {
+      role: 'assistant',
+      content: '⚠️ There was a problem generating the presentation. Check if both servers are running (Ollama + Pandoc).',
+      timestamp: new Date(),
+      isError: true
+    };
+    setMessages(prev => [...prev, errorMessage]);
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   const clearChat = () => {
     setMessages([]);
