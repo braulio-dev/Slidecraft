@@ -7,7 +7,7 @@ import './App.css';
 function App() {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('llama3.1:latest');
+  const [selectedModel, setSelectedModel] = useState('gemma3:1b');
   const [availableModels, setAvailableModels] = useState([]);
   const messagesEndRef = useRef(null);
 
@@ -36,8 +36,8 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to fetch models:', error);
-      // Fallback to default model
-      setAvailableModels(['mistral:latest'], ['llama3.1:latest']);
+      // Fallback to gemma3:1b model
+      setAvailableModels(['gemma3:1b']);
     }
   };
 
@@ -151,7 +151,7 @@ Respond only in Markdown syntax suitable for conversion by Pandoc.`
           </div>
         </div>
       </div>
-      
+
       <div className="chat-container">
         <div className="messages-container">
           {messages.length === 0 && (
@@ -163,25 +163,25 @@ Respond only in Markdown syntax suitable for conversion by Pandoc.`
               </div>
             </div>
           )}
-          
+
           {messages.map((message, index) => (
             <ChatMessage key={index} message={message} />
           ))}
-          
+
           {isLoading && (
-            <ChatMessage 
-              message={{ 
-                role: 'assistant', 
-                content: 'Thinking...', 
+            <ChatMessage
+              message={{
+                role: 'assistant',
+                content: 'Thinking...',
                 timestamp: new Date(),
-                isLoading: true 
-              }} 
+                isLoading: true
+              }}
             />
           )}
-          
+
           <div ref={messagesEndRef} />
         </div>
-        
+
         <ChatInput onSendMessage={sendMessage} disabled={isLoading} />
       </div>
     </div>
