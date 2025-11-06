@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import './AdminPanel.css';
 
@@ -9,7 +9,6 @@ const AdminPanel = ({ onClose }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -18,12 +17,7 @@ const AdminPanel = ({ onClose }) => {
     role: 'employee'
   });
 
-  useEffect(() => {
-    fetchUsers();
-    fetchStats();
-  }, []);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const response = await fetch('http://localhost:4000/api/admin/users', {
         headers: getAuthHeaders()
@@ -38,9 +32,9 @@ const AdminPanel = ({ onClose }) => {
       setError(err.message);
       setLoading(false);
     }
-  };
+  }, [getAuthHeaders]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const response = await fetch('http://localhost:4000/api/admin/stats', {
         headers: getAuthHeaders()
@@ -53,7 +47,12 @@ const AdminPanel = ({ onClose }) => {
     } catch (err) {
       console.error('Failed to fetch stats:', err);
     }
-  };
+  }, [getAuthHeaders]);
+
+  useEffect(() => {
+    fetchUsers();
+    fetchStats();
+  }, [fetchUsers, fetchStats]);
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
