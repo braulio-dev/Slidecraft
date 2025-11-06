@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 
 const AuthContext = createContext(null);
 
@@ -16,23 +16,30 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Check if user is logged in on mount
-  useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
-      // Verify token is still valid
-      verifyToken(storedToken);
-    } else {
-      setLoading(false);
+  // Logout function - defined early so it can be used by verifyToken
+  const logout = useCallback(async () => {
+    try {
+      if (token) {
+        await fetch('http://localhost:4000/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      // Clear local storage and state
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      setToken(null);
+      setUser(null);
     }
-  }, []);
+  }, [token]);
 
   // Verify token with backend
-  const verifyToken = async (tokenToVerify) => {
+  const verifyToken = useCallback(async (tokenToVerify) => {
     try {
       const response = await fetch('http://localhost:4000/api/auth/me', {
         headers: {
@@ -53,7 +60,22 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [logout]);
+
+  // Check if user is logged in on mount
+  useEffect(() => {
+    const storedToken = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user');
+
+    if (storedToken && storedUser) {
+      setToken(storedToken);
+      setUser(JSON.parse(storedUser));
+      // Verify token is still valid
+      verifyToken(storedToken);
+    } else {
+      setLoading(false);
+    }
+  }, [verifyToken]);
 
   // Login function
   const login = async (username, password) => {
@@ -86,36 +108,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Logout function
-  const logout = async () => {
-    try {
-      if (token) {
-        await fetch('http://localhost:4000/api/auth/logout', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-      }
-    } catch (err) {
-      console.error('Logout error:', err);
-    } finally {
-      // Clear local storage and state
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      setToken(null);
-      setUser(null);
-    }
-  };
-
   // Get auth headers for API calls
-  const getAuthHeaders = () => {
+  const getAuthHeaders = useCallback(() => {
     if (!token) return {};
     return {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
     };
-  };
+  }, [token]);
 
   // Check if user is admin
   const isAdmin = () => {

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './components/Login';
 import UserMenu from './components/UserMenu';
@@ -15,11 +15,22 @@ function MainApp() {
   const [chats, setChats] = useState([]); // [{id, title, messages: []}]
   const [currentChatId, setCurrentChatId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('llama3.1:latest');
+  const [selectedModel, setSelectedModel] = useState('qwen2.5:7b-instruct');
   const [availableModels, setAvailableModels] = useState([]);
   const messagesEndRef = useRef(null);
 
   const currentChat = chats.find(c => c.id === currentChatId);
+
+  // --- Crear nuevo chat ---
+  const createNewChat = useCallback(() => {
+    const newChat = {
+      id: Date.now(),
+      title: `Chat ${chats.length + 1}`,
+      messages: []
+    };
+    setChats(prev => [newChat, ...prev]);
+    setCurrentChatId(newChat.id);
+  }, [chats.length]);
 
   // --- Scroll automático ---
   const scrollToBottom = () => {
@@ -35,12 +46,17 @@ function MainApp() {
       const response = await fetch('http://localhost:11434/api/tags');
       const data = await response.json();
       if (data.models && data.models.length > 0) {
-        setAvailableModels(data.models.map(model => model.name));
+        const modelNames = data.models.map(model => model.name);
+        setAvailableModels(modelNames);
+        // Set the first available model as selected if current model doesn't exist
+        if (!modelNames.includes(selectedModel) && modelNames.length > 0) {
+          setSelectedModel(modelNames[0]);
+        }
       } else {
-        setAvailableModels(['llama3.1:latest']);
+        setAvailableModels(['qwen2.5:7b-instruct']);
       }
     } catch {
-      setAvailableModels(['llama3.1:latest']);
+      setAvailableModels(['qwen2.5:7b-instruct']);
     }
   };
 
@@ -63,11 +79,16 @@ function MainApp() {
             ]
           }));
 
-          setChats(formattedChats);
-          if (formattedChats.length > 0) {
-            setCurrentChatId(formattedChats[0].id);
-          }
-          console.log("✅ Loaded user history from MongoDB");
+          // Create a new empty chat for the user to start a conversation
+          const newChat = {
+            id: Date.now(),
+            title: `New Chat`,
+            messages: []
+          };
+
+          setChats([newChat, ...formattedChats]);
+          setCurrentChatId(newChat.id);
+          console.log("✅ Loaded user history from MongoDB and created new chat");
           return;
         }
       } catch (err) {
@@ -88,27 +109,27 @@ function MainApp() {
     if (isAuthenticated) {
       loadUserHistory();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, createNewChat, getAuthHeaders]);
 
   // --- Guardar chats en localStorage también ---
   useEffect(() => {
     localStorage.setItem("ollama_chats", JSON.stringify(chats));
   }, [chats]);
 
-  // --- Crear nuevo chat ---
-  const createNewChat = () => {
-    const newChat = {
-      id: Date.now(),
-      title: `Chat ${chats.length + 1}`,
-      messages: []
-    };
-    setChats(prev => [newChat, ...prev]);
-    setCurrentChatId(newChat.id);
-  };
-
   // --- Enviar mensaje ---
   const sendMessage = async (message) => {
-    if (!message.trim() || !currentChat) return;
+    if (!message.trim()) {
+      console.log("Empty message, ignoring");
+      return;
+    }
+
+    if (!currentChat) {
+      console.error("No current chat selected!");
+      return;
+    }
+
+    console.log("Sending message:", message);
+    console.log("Current chat:", currentChat);
 
     const userMessage = { role: 'user', content: message, timestamp: new Date() };
     const updatedChat = {
@@ -122,6 +143,7 @@ function MainApp() {
     setIsLoading(true);
 
     try {
+      console.log("Fetching from Ollama...");
       const response = await fetch('http://localhost:11434/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -140,7 +162,12 @@ Output Markdown only.`
         })
       });
 
+      if (!response.ok) {
+        throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+      }
+
       const data = await response.json();
+      console.log("Ollama response:", data);
       const markdownResponse = data.message?.content || data.response || "(No response)";
 
       const assistantMessage = {
@@ -158,6 +185,7 @@ Output Markdown only.`
       );
 
       // --- Enviar Markdown al backend Pandoc ---
+      console.log("Converting to PPTX...");
       const convertResponse = await fetch('http://localhost:4000/convert', {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -174,10 +202,19 @@ Output Markdown only.`
         a.click();
         a.remove();
         window.URL.revokeObjectURL(url);
+        console.log("PPTX downloaded successfully");
+      } else {
+        console.error("Convert API error:", convertResponse.status);
       }
 
     } catch (error) {
-      console.error("❌ Error:", error);
+      console.error("❌ Error in sendMessage:", error);
+      alert(`Error: ${error.message}`);
+
+      // Keep the user message visible even if there's an error
+      setChats(prev =>
+        prev.map(c => c.id === currentChat.id ? updatedChat : c)
+      );
     } finally {
       setIsLoading(false);
     }
