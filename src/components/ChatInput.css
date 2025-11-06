@@ -1,13 +1,11 @@
 .chat-input-container {
-  padding: 20px 24px;
   background-color: #343541;
-  border-top: 1px solid #565869;
   flex-shrink: 0;
+  flex: 1;
 }
 
 .chat-input-form {
-  max-width: 800px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .input-wrapper {
@@ -18,12 +16,14 @@
   border: 1px solid #565869;
   border-radius: 12px;
   overflow: hidden;
+  min-height: 80px;
 }
 
 .input-controls {
   display: flex;
   align-items: center;
-  padding: 8px;
+  padding: 12px;
+  align-self: flex-end;
 }
 
 .file-upload-button {
@@ -56,10 +56,10 @@
   color: #ffffff;
   font-size: 16px;
   font-family: inherit;
-  padding: 16px 20px;
+  padding: 20px;
   resize: none;
-  min-height: 24px;
-  max-height: 200px;
+  min-height: 60px;
+  max-height: 300px;
   line-height: 1.5;
   overflow-y: auto;
 }

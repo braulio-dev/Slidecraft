@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="960" height="540" viewBox="0 0 960 540" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fondo -->
+  <rect width="960" height="540" fill="#4a90e2"/>
+  
+  <!-- Línea decorativa superior -->
+  <rect x="0" y="0" width="960" height="8" fill="rgba(0,0,0,0.1)"/>
+  
+  <!-- Título -->
+  <text x="480" y="200" 
+        font-family="Arial, sans-serif" 
+        font-size="72" 
+        font-weight="bold"
+        fill="#ffffff" 
+        text-anchor="middle">
+    Template
+  </text>
+  
+  <!-- Subtítulo -->
+  <text x="480" y="280" 
+        font-family="Arial, sans-serif" 
+        font-size="32" 
+        fill="#ffffff" 
+        text-anchor="middle"
+        opacity="0.9">
+    Plantilla con diseño azul
+  </text>
+  
+  <!-- Decoración inferior -->
+  <circle cx="480" cy="420" r="40" fill="rgba(255,255,255,0.2)"/>
+  <circle cx="380" cy="420" r="20" fill="rgba(255,255,255,0.1)"/>
+  <circle cx="580" cy="420" r="20" fill="rgba(255,255,255,0.1)"/>
+  
+  <!-- Línea decorativa inferior -->
+  <rect x="0" y="532" width="960" height="8" fill="rgba(0,0,0,0.1)"/>
+</svg>

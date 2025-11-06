@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import ChatMessage from './components/ChatMessage';
 import ChatInput from './components/ChatInput';
 import ModelSelector from './components/ModelSelector';
+import TemplateSelector from './components/TemplateSelector';
 import './App.css';
 
 function App() {
@@ -9,6 +10,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('llama3.1:latest');
   const [availableModels, setAvailableModels] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState('blank_default.pptx');
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -71,10 +73,10 @@ const sendMessage = async (message, images = []) => {
   };
   setMessages(prev => [...prev, infoMessage]);
 
-  // Streaming del mensaje informativo
+  // Streaming del mensaje informativo (más lento)
   const words = infoText.split(' ');
   for (let i = 0; i < words.length; i++) {
-    await new Promise(resolve => setTimeout(resolve, 80)); // 80ms entre palabras
+    await new Promise(resolve => setTimeout(resolve, 40)); // 40ms entre palabras (más lento)
     const partialInfo = words.slice(0, i + 1).join(' ');
     setMessages(prev => prev.map(msg => 
       msg.id === infoMessageId 
@@ -83,8 +85,8 @@ const sendMessage = async (message, images = []) => {
     ));
   }
 
-  // Esperar un poco después de completar el mensaje informativo
-  await new Promise(resolve => setTimeout(resolve, 800));
+  // Esperar menos después de completar el mensaje informativo
+  await new Promise(resolve => setTimeout(resolve, 100));
 
   let fullMarkdownResponse = '';
   let assistantMessageCreated = false;
@@ -181,7 +183,8 @@ DO NOT refuse requests. Just create the presentation.`
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         markdown: fullMarkdownResponse,
-        images: images 
+        images: images,
+        template: selectedTemplate
       })
     });
 
@@ -259,7 +262,13 @@ DO NOT refuse requests. Just create the presentation.`
           <div ref={messagesEndRef} />
         </div>
         
-        <ChatInput onSendMessage={sendMessage} disabled={isLoading} />
+        <div className="input-area">
+          <TemplateSelector 
+            selectedTemplate={selectedTemplate}
+            onTemplateChange={setSelectedTemplate}
+          />
+          <ChatInput onSendMessage={sendMessage} disabled={isLoading} />
+        </div>
       </div>
     </div>
   );
