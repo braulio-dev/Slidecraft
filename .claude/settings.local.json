@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(if [ -f server.js ])",
+      "Bash(then mv server.js server.mjs)",
+      "Bash(fi)",
+      "Bash(if [ -f User.js ])",
+      "Bash(then mv User.js User.mjs)",
+      "Bash(if [ -f Conversion.js ])",
+      "Bash(then mv Conversion.js Conversion.mjs)",
+      "Bash(if [ -f auth.js ])",
+      "Bash(then mv auth.js auth.mjs)",
+      "Bash(if [ -f admin.js ])",
+      "Bash(then mv admin.js admin.mjs)",
+      "Bash(if [ -f connection.js ])",
+      "Bash(then mv connection.js connection.mjs)",
+      "Bash(if [ -f createAdmin.js ])",
+      "Bash(then mv createAdmin.js createAdmin.mjs)",
+      "Bash(npm start)",
+      "Bash(timeout 30 npm start)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker-compose logs:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

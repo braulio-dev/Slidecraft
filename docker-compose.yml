@@ -1,6 +1,7 @@
 # docker-compose.yml  (remove the obsolete `version:` key)
 volumes:
   ollama_data:
+  mongodb_data:
 
 services:
   ollama:
@@ -34,6 +35,44 @@ services:
       - ollama_data:/root/.ollama
     network_mode: "service:ollama"
 
+  mongodb:
+    image: mongo:7.0
+    container_name: slidecraft-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: slidecraft
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: .
+    container_name: slidecraft-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/slidecraft
+      - JWT_SECRET=your-secret-key-change-this-in-production
+      - JWT_EXPIRES_IN=8h
+      - SESSION_SECRET=your-session-secret-change-this-in-production
+      - NODE_ENV=production
+    volumes:
+      - ./uploads:/app/uploads
+      - ./templates:/app/templates
+    command: ["node", "src/server.mjs"]
+
   chat-frontend:
     build: .
     container_name: ollama-chat-frontend
@@ -41,6 +80,8 @@ services:
       - "3000:3000"
     depends_on:
       - ollama
+      - backend
+      - mongodb
     environment:
       - REACT_APP_OLLAMA_URL=http://ollama:11434
     volumes:

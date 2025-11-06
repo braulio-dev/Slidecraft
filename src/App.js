@@ -1,10 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Login from './components/Login';
+import UserMenu from './components/UserMenu';
+import AdminPanel from './components/AdminPanel';
 import ChatMessage from './components/ChatMessage';
 import ChatInput from './components/ChatInput';
 import ModelSelector from './components/ModelSelector';
 import './App.css';
 
-function App() {
+// Main App Component with Authentication
+function MainApp() {
+  const { isAuthenticated, loading, getAuthHeaders } = useAuth();
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [chats, setChats] = useState([]); // [{id, title, messages: []}]
   const [currentChatId, setCurrentChatId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -37,30 +44,34 @@ function App() {
     }
   };
 
-  // --- Cargar historial desde db.json al iniciar ---
+  // --- Cargar historial del usuario desde MongoDB ---
   useEffect(() => {
-    async function loadServerData() {
+    async function loadUserHistory() {
       try {
-        const res = await fetch("http://localhost:4000/load");
+        const res = await fetch("http://localhost:4000/history", {
+          headers: getAuthHeaders()
+        });
         const data = await res.json();
 
         if (data.conversions && data.conversions.length > 0) {
           const formattedChats = data.conversions.map((c, index) => ({
-            id: c.id,
-            title: `Chat ${index + 1}`,
+            id: c._id,
+            title: `Presentation ${data.conversions.length - index}`,
             messages: [
-              { role: 'system', content: 'Imported from db.json', timestamp: new Date() },
-              { role: 'assistant', content: c.markdown || "(empty)", timestamp: new Date() }
+              { role: 'system', content: `Created: ${new Date(c.timestamp).toLocaleString()}`, timestamp: new Date(c.timestamp) },
+              { role: 'assistant', content: `Slide Count: ${c.metadata?.slideCount || 'N/A'}\nCharacters: ${c.metadata?.characterCount || 'N/A'}`, timestamp: new Date(c.timestamp) }
             ]
           }));
 
           setChats(formattedChats);
-          setCurrentChatId(formattedChats[formattedChats.length - 1].id);
-          console.log("✅ Loaded chats from db.json");
+          if (formattedChats.length > 0) {
+            setCurrentChatId(formattedChats[0].id);
+          }
+          console.log("✅ Loaded user history from MongoDB");
           return;
         }
       } catch (err) {
-        console.warn("⚠️ No db.json found or load failed:", err);
+        console.warn("⚠️ Failed to load history:", err);
       }
 
       // Si falla o está vacío, cargar localStorage o crear uno nuevo
@@ -74,8 +85,10 @@ function App() {
       }
     }
 
-    loadServerData();
-  }, []);
+    if (isAuthenticated) {
+      loadUserHistory();
+    }
+  }, [isAuthenticated]);
 
   // --- Guardar chats en localStorage también ---
   useEffect(() => {
@@ -147,7 +160,7 @@ Output Markdown only.`
       // --- Enviar Markdown al backend Pandoc ---
       const convertResponse = await fetch('http://localhost:4000/convert', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ markdown: markdownResponse })
       });
 
@@ -177,6 +190,21 @@ Output Markdown only.`
     setChats(prev => prev.map(c => c.id === currentChat.id ? cleared : c));
   };
 
+  // Show loading spinner while checking authentication
+  if (loading) {
+    return (
+      <div className="auth-loading">
+        <div className="loading-spinner"></div>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  // Show login if not authenticated
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
   return (
     <div className="app">
       <div className="sidebar">
@@ -195,7 +223,7 @@ Output Markdown only.`
       <div className="chat-main">
         <div className="app-header">
           <div className="header-content">
-            <h1>{currentChat?.title || "Ollama Chat"}</h1>
+            <h1>{currentChat?.title || "Slidecraft"}</h1>
             <div className="header-controls">
               <ModelSelector
                 models={availableModels}
@@ -205,6 +233,7 @@ Output Markdown only.`
               <button onClick={clearChat} className="clear-button">
                 Clear Chat
               </button>
+              <UserMenu onOpenAdmin={() => setShowAdminPanel(true)} />
             </div>
           </div>
         </div>
@@ -234,7 +263,20 @@ Output Markdown only.`
           <ChatInput onSendMessage={sendMessage} disabled={isLoading} />
         </div>
       </div>
+
+      {showAdminPanel && (
+        <AdminPanel onClose={() => setShowAdminPanel(false)} />
+      )}
     </div>
+  );
+}
+
+// App wrapper with AuthProvider
+function App() {
+  return (
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
   );
 }
 
