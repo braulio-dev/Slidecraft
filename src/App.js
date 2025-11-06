@@ -13,6 +13,14 @@ function App() {
   const [selectedTemplate, setSelectedTemplate] = useState('blank_default.pptx');
   const messagesEndRef = useRef(null);
 
+   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [chats, setChats] = useState([
+    { id: 1, title: "Chat 1" },
+    { id: 2, title: "Chat 2" },
+    { id: 3, title: "Chat 3" }
+  ]);
+  const dropdownRef = useRef(null);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -220,6 +228,26 @@ DO NOT refuse requests. Just create the presentation.`
   }
 };
 
+ // Cerrar menú al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+     document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleNewChat = () => {
+    const newId = chats.length + 1;
+    setChats([...chats, { id: newId, title: `Chat ${newId}` }]);
+  };
+
+
 
   const clearChat = () => {
     setMessages([]);
@@ -229,7 +257,33 @@ DO NOT refuse requests. Just create the presentation.`
     <div className="app">
       <div className="app-header">
         <div className="header-content">
-          <h1>Ollama Chat</h1>
+          <div className="header-left">
+            <div className="chat-dropdown" ref={dropdownRef}>
+              <button
+                className="new-chat-button"
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              >
+                + New Chat
+              </button>
+
+              {isDropdownOpen && (
+                <div className="dropdown-menu">
+                  <button className="dropdown-item" onClick={handleNewChat}>
+                    ➕ Start new chat
+                  </button>
+                  <div className="dropdown-divider" />
+                  {chats.map((chat) => (
+                    <button key={chat.id} className="dropdown-item">
+                      {chat.title}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <h1>Ollama Chat</h1>
+          </div>
+
           <div className="header-controls">
             <ModelSelector
               models={availableModels}
@@ -272,6 +326,9 @@ DO NOT refuse requests. Just create the presentation.`
       </div>
     </div>
   );
+
 }
+
+
 
 export default App;
