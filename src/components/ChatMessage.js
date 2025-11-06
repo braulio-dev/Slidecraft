@@ -52,7 +52,7 @@ function ChatMessage({ message }) {
           </span>
         </div>
         
-        <div className={`message-text ${message.isError ? 'error' : ''} ${message.isLoading ? 'loading' : ''}`}>
+        <div className={`message-text ${message.isError ? 'error' : ''} ${message.isLoading ? 'loading' : ''} ${message.isInfo ? 'info' : ''}`}>
           {message.isLoading ? (
             <div className="loading-dots">
               <span></span>
@@ -60,9 +60,22 @@ function ChatMessage({ message }) {
               <span></span>
             </div>
           ) : (
-            <ReactMarkdown components={components}>
-              {message.content}
-            </ReactMarkdown>
+            <>
+              <ReactMarkdown components={components}>
+                {message.content}
+              </ReactMarkdown>
+              
+              {/* Mostrar imágenes si existen */}
+              {message.images && message.images.length > 0 && (
+                <div className="message-images">
+                  {message.images.map((img, index) => (
+                    <div key={index} className="message-image-preview">
+                      <img src={img.data} alt={img.name} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
