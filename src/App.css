@@ -54,6 +54,7 @@
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
+  overflow-y: auto;
   height: calc(100vh - 80px);
 }
 
@@ -98,4 +99,43 @@
 
 .model-info strong {
   color: #ffffff;
+}
+
+
+.sidebar {
+  width: 220px;
+  background-color: #222;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+}
+
+.new-chat {
+  background-color: #444;
+  color: white;
+  border: none;
+  padding: 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.chat-item {
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+.chat-item:hover {
+  background-color: #333;
+}
+
+.chat-item.active {
+  background-color: #555;
+}
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
