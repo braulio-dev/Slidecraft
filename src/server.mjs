@@ -4,6 +4,21 @@ import path from "path";
 import cors from "cors";
 import { fileURLToPath } from "url";
 import { convertMarkdownToPPTX } from "./convertToPPTX.mjs";
+import dotenv from "dotenv";
+
+// Load environment variables
+dotenv.config();
+
+// Import MongoDB connection and models
+import connectDB from "../db/connection.mjs";
+import Conversion from "../models/Conversion.mjs";
+
+// Import routes
+import authRoutes from "../routes/auth.mjs";
+import adminRoutes from "../routes/admin.mjs";
+
+// Import middleware
+import { authenticateToken } from "../middleware/auth.mjs";
 
 const app = express();
 const PORT = 4000;
@@ -12,11 +27,19 @@ const PORT = 4000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Connect to MongoDB
+connectDB();
+
+// --- Middlewares ---
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 // Servir archivos estáticos (miniaturas)
 app.use('/thumbnails', express.static(path.resolve(__dirname, '../public/thumbnails')));
+
+// --- Authentication Routes ---
+app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Endpoint para listar plantillas disponibles
 app.get("/api/templates", (req, res) => {
@@ -79,61 +102,63 @@ app.get("/api/templates", (req, res) => {
   }
 });
 
-app.post("/convert", async (req, res) => {
+app.post("/convert", authenticateToken, async (req, res) => {
   try {
-    console.log(" Received conversion request");
+    console.log("✅ /convert endpoint hit by user:", req.user.username);
 
     const { markdown, images, template } = req.body;
     console.log(" Markdown length:", markdown?.length || 0);
     console.log(" Images count:", images?.length || 0);
     console.log(" Template requested:", template || 'default');
-    
+
     if (!markdown) {
       console.error("❌ No markdown content received");
       return res.status(400).send("❌ No markdown content received");
     }
 
-    // Crear carpeta de salida si no existe
-    const outputDir = path.resolve(__dirname, "../uploads");
+    // --- Crear carpeta de salida por usuario ---
+    const outputDir = path.resolve(__dirname, `../uploads/${req.user._id}`);
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
     // Procesar imágenes si existen
     let processedMarkdown = markdown;
-    
+
     // Eliminar TODAS las referencias a imágenes del markdown generado por el modelo
     // Solo queremos el texto, las imágenes las agregamos nosotros
     processedMarkdown = processedMarkdown.replace(/!\[.*?\]\(.*?\)/g, '');
-    
+
     if (images && images.length > 0) {
       console.log(` Processing ${images.length} image(s)...`);
-      
+
       images.forEach((img, index) => {
         const imageFileName = `image_${Date.now()}_${index}.jpg`;
         const imagePath = path.join(outputDir, imageFileName);
-        
+
         // Extraer el base64 de la imagen
         const base64Data = img.data.replace(/^data:image\/\w+;base64,/, '');
         fs.writeFileSync(imagePath, Buffer.from(base64Data, 'base64'));
-        
+
         console.log(`✅ Image saved: ${imageFileName}`);
-        
+
         // Agregar la imagen al markdown SIN título
         processedMarkdown += `\n\n## \n\n![](${imagePath})\n`;
       });
     }
 
-    // Archivo temporal de salida
-    const outputFile = path.join(outputDir, `presentation_${Date.now()}.pptx`);
+    // --- Archivo de salida ---
+    const timestamp = Date.now();
+    const filename = `presentation_${timestamp}.pptx`;
+    const outputFile = path.join(outputDir, filename);
     console.log("📄 Generating presentation at:", outputFile);
 
     // Usar la plantilla seleccionada por el usuario
     let useTemplate = null;
-    
+
     if (template) {
       const templatePath = path.resolve(__dirname, "../templates", template);
       console.log(" Looking for template:", templatePath);
       console.log(" Template exists?", fs.existsSync(templatePath));
-      
+
       if (fs.existsSync(templatePath)) {
         useTemplate = templatePath;
         console.log(" Using selected template:", template);
@@ -157,25 +182,79 @@ app.post("/convert", async (req, res) => {
       }
     }
 
-    // Pasar ruta del template al convertidor
+    // --- Conversión ---
+    const startTime = Date.now();
     await convertMarkdownToPPTX(processedMarkdown, outputFile, useTemplate);
+    const generationTime = Date.now() - startTime;
 
-    // Enviar el archivo resultante
-    res.download(outputFile, (err) => {
+    // --- Guardar registro en MongoDB ---
+    const slideCount = (processedMarkdown.match(/^##\s/gm) || []).length;
+    const conversion = new Conversion({
+      userId: req.user._id,
+      markdown: processedMarkdown,
+      filename: filename,
+      filePath: outputFile,
+      metadata: {
+        slideCount: slideCount,
+        characterCount: processedMarkdown.length,
+        generationTime: generationTime,
+        imagesCount: images?.length || 0,
+        template: template || 'blank_default.pptx'
+      }
+    });
+
+    await conversion.save();
+    console.log("💾 Saved conversion record to MongoDB");
+
+    // --- Enviar el archivo al cliente ---
+    res.download(outputFile, filename, (err) => {
       if (err) console.error("Error sending file:", err);
-      // Limpieza después de 5 segundos
-      setTimeout(() => fs.unlink(outputFile, () => {}), 5000);
+      // Keep file on disk for user history - don't delete
     });
   } catch (error) {
     console.error("❌ Error converting markdown to PPTX:", error);
     console.error("❌ Error stack:", error.stack);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Error converting markdown to PPTX",
-      details: error.message 
+      details: error.message
     });
   }
 });
 
+// --- Endpoint: historial de conversiones del usuario (Protected) ---
+app.get("/history", authenticateToken, async (req, res) => {
+  try {
+    const conversions = await Conversion.find({ userId: req.user._id })
+      .sort({ timestamp: -1 })
+      .select('-markdown'); // Don't send full markdown in list view
+
+    res.json({ conversions });
+  } catch (error) {
+    console.error("❌ Error fetching history:", error);
+    res.status(500).send("Error fetching conversion history");
+  }
+});
+
+// --- Endpoint: obtener detalles de una conversión específica ---
+app.get("/conversion/:id", authenticateToken, async (req, res) => {
+  try {
+    const conversion = await Conversion.findOne({
+      _id: req.params.id,
+      userId: req.user._id // Ensure user can only access their own conversions
+    });
+
+    if (!conversion) {
+      return res.status(404).json({ error: "Conversion not found" });
+    }
+
+    res.json({ conversion });
+  } catch (error) {
+    console.error("❌ Error fetching conversion:", error);
+    res.status(500).send("Error fetching conversion details");
+  }
+});
+
+// --- Inicializar servidor ---
 app.listen(PORT, () => {
   console.log(`✅ Pandoc conversion server running at http://localhost:${PORT}`);
 });

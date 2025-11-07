@@ -1,107 +1,171 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Login from './components/Login';
+import UserMenu from './components/UserMenu';
+import AdminPanel from './components/AdminPanel';
 import ChatMessage from './components/ChatMessage';
 import ChatInput from './components/ChatInput';
 import ModelSelector from './components/ModelSelector';
 import TemplateSelector from './components/TemplateSelector';
 import './App.css';
 
-function App() {
-  const [messages, setMessages] = useState([]);
+// Main App Component with Authentication
+function MainApp() {
+  const { isAuthenticated, loading, getAuthHeaders } = useAuth();
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [chats, setChats] = useState([]); // [{id, title, messages: []}]
+  const [currentChatId, setCurrentChatId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('llama3.1:latest');
+  const [selectedModel, setSelectedModel] = useState('qwen2.5:7b-instruct');
   const [availableModels, setAvailableModels] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState('blank_default.pptx');
   const messagesEndRef = useRef(null);
 
+  const currentChat = chats.find(c => c.id === currentChatId);
+
+  // --- Crear nuevo chat ---
+  const createNewChat = useCallback(() => {
+    const newChat = {
+      id: Date.now(),
+      title: `Chat ${chats.length + 1}`,
+      messages: []
+    };
+    setChats(prev => [newChat, ...prev]);
+    setCurrentChatId(newChat.id);
+  }, [chats.length]);
+
+  // --- Scroll automático ---
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+  useEffect(scrollToBottom, [currentChat?.messages]);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  useEffect(() => {
-    fetchAvailableModels();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // --- Cargar modelos disponibles ---
+  useEffect(() => { fetchAvailableModels(); }, []);
 
   const fetchAvailableModels = async () => {
     try {
       const response = await fetch('http://localhost:11434/api/tags');
       const data = await response.json();
       if (data.models && data.models.length > 0) {
-        setAvailableModels(data.models.map(model => model.name));
-        if (!selectedModel && data.models.length > 0) {
-          setSelectedModel(data.models[0].name);
+        const modelNames = data.models.map(model => model.name);
+        setAvailableModels(modelNames);
+        // Set the first available model as selected if current model doesn't exist
+        if (!modelNames.includes(selectedModel) && modelNames.length > 0) {
+          setSelectedModel(modelNames[0]);
         }
+      } else {
+        setAvailableModels(['qwen2.5:7b-instruct']);
       }
-    } catch (error) {
-      console.error('Failed to fetch models:', error);
-      // Fallback to default model
-      setAvailableModels(['mistral:latest'], ['llama3.1:latest']);
+    } catch {
+      setAvailableModels(['qwen2.5:7b-instruct']);
     }
   };
 
+  // --- Cargar historial del usuario desde MongoDB ---
+  useEffect(() => {
+    async function loadUserHistory() {
+      try {
+        const res = await fetch("http://localhost:4000/history", {
+          headers: getAuthHeaders()
+        });
+        const data = await res.json();
 
-const sendMessage = async (message, images = []) => {
-  if (!message.trim() && images.length === 0) return;
+        if (data.conversions && data.conversions.length > 0) {
+          const formattedChats = data.conversions.map((c, index) => ({
+            id: c._id,
+            title: `Presentation ${data.conversions.length - index}`,
+            messages: [
+              { role: 'system', content: `Created: ${new Date(c.timestamp).toLocaleString()}`, timestamp: new Date(c.timestamp) },
+              { role: 'assistant', content: `Slide Count: ${c.metadata?.slideCount || 'N/A'}\nCharacters: ${c.metadata?.characterCount || 'N/A'}`, timestamp: new Date(c.timestamp) }
+            ]
+          }));
 
-  // Limpiar el mensaje de referencias base64
-  const cleanMessage = message.replace(/\[Imagen adjunta:.*?\]/g, '').trim();
+          // Create a new empty chat for the user to start a conversation
+          const newChat = {
+            id: Date.now(),
+            title: `New Chat`,
+            messages: []
+          };
 
-  const userMessage = { 
-    role: 'user', 
-    content: cleanMessage || 'Crear presentación con estas imágenes', 
-    timestamp: new Date(),
-    images: images // Guardar las imágenes en el mensaje
-  };
-  setMessages(prev => [...prev, userMessage]);
-  setIsLoading(true);
+          setChats([newChat, ...formattedChats]);
+          setCurrentChatId(newChat.id);
+          console.log("✅ Loaded user history from MongoDB and created new chat");
+          return;
+        }
+      } catch (err) {
+        console.warn("⚠️ Failed to load history:", err);
+      }
 
-  // Mostrar mensaje informativo con streaming
-  const infoMessageId = Date.now();
-  const infoText = '🎨 **Generando presentación...**\n\nSe mostrará el contenido en formato Markdown y se creará automáticamente una presentación PowerPoint que se descargará cuando esté lista.';
-  
-  // Agregar mensaje vacío inicial
-  const infoMessage = {
-    id: infoMessageId,
-    role: 'assistant',
-    content: '',
-    timestamp: new Date(),
-    isInfo: true
-  };
-  setMessages(prev => [...prev, infoMessage]);
+      // Si falla o está vacío, cargar localStorage o crear uno nuevo
+      const saved = localStorage.getItem("ollama_chats");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setChats(parsed);
+        if (parsed.length > 0) setCurrentChatId(parsed[0].id);
+      } else {
+        createNewChat();
+      }
+    }
 
-  // Streaming del mensaje informativo (más lento)
-  const words = infoText.split(' ');
-  for (let i = 0; i < words.length; i++) {
-    await new Promise(resolve => setTimeout(resolve, 40)); // 40ms entre palabras (más lento)
-    const partialInfo = words.slice(0, i + 1).join(' ');
-    setMessages(prev => prev.map(msg => 
-      msg.id === infoMessageId 
-        ? { ...msg, content: partialInfo }
-        : msg
-    ));
-  }
+    if (isAuthenticated) {
+      loadUserHistory();
+    }
+  }, [isAuthenticated, createNewChat, getAuthHeaders]);
 
-  // Esperar menos después de completar el mensaje informativo
-  await new Promise(resolve => setTimeout(resolve, 100));
+  // --- Guardar chats en localStorage también ---
+  useEffect(() => {
+    localStorage.setItem("ollama_chats", JSON.stringify(chats));
+  }, [chats]);
 
-  let fullMarkdownResponse = '';
-  let assistantMessageCreated = false;
+  // --- Enviar mensaje ---
+  const sendMessage = async (message, images = []) => {
+    if (!message.trim() && images.length === 0) {
+      console.log("Empty message, ignoring");
+      return;
+    }
 
-  try {
-    // --- Enviar mensaje a Ollama con streaming ---
-    const response = await fetch('http://localhost:11434/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: selectedModel,
-        messages: [
-          {
-            role: "system",
-            content: `You are a presentation creator. Generate presentations in Markdown format ONLY.
+    if (!currentChat) {
+      console.error("No current chat selected!");
+      return;
+    }
+
+    console.log("Sending message:", message);
+    console.log("Current chat:", currentChat);
+
+    // Limpiar el mensaje de referencias base64
+    const cleanMessage = message.replace(/\[Imagen adjunta:.*?\]/g, '').trim();
+
+    const userMessage = {
+      role: 'user',
+      content: cleanMessage || 'Crear presentación con estas imágenes',
+      timestamp: new Date(),
+      images: images // Guardar las imágenes en el mensaje
+    };
+
+    const updatedChat = {
+      ...currentChat,
+      messages: [...currentChat.messages, userMessage]
+    };
+
+    setChats(prev =>
+      prev.map(c => c.id === currentChat.id ? updatedChat : c)
+    );
+    setIsLoading(true);
+
+    let fullMarkdownResponse = '';
+
+    try {
+      console.log("Fetching from Ollama with streaming...");
+      const response = await fetch('http://localhost:11434/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: [
+            {
+              role: "system",
+              content: `You are a presentation creator. Generate presentations in Markdown format ONLY.
 Rules:
 - Start with # for the title
 - Use ## for each slide title
@@ -111,166 +175,222 @@ Rules:
 - DO NOT include image placeholders in markdown (images will be added separately)
 - Focus on text content only
 DO NOT refuse requests. Just create the presentation.`
-          },
-          {
-            role: "user",
-            content: `Create a presentation about: ${cleanMessage}${images.length > 0 ? `. Include ${images.length} image placeholder(s).` : ''}`
-          }
-        ],
-        stream: true
-      }),
-    });
+            },
+            ...updatedChat.messages
+          ],
+          stream: true
+        })
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
+      if (!response.ok) {
+        throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+      }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      // Create assistant message for streaming
+      let streamingMessageAdded = false;
 
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n').filter(line => line.trim());
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      for (const line of lines) {
-        try {
-          const json = JSON.parse(line);
-          if (json.message?.content) {
-            fullMarkdownResponse += json.message.content;
-            
-            // Crear el mensaje del asistente solo una vez con el primer contenido
-            if (!assistantMessageCreated) {
-              // Reemplazar el mensaje informativo con el contenido real
-              setMessages(prev => {
-                return prev.map(msg => 
-                  msg.id === infoMessageId 
-                    ? { ...msg, content: fullMarkdownResponse, isInfo: false }
-                    : msg
-                );
-              });
-              assistantMessageCreated = true;
-            } else {
-              // Actualizar el último mensaje (el del asistente)
-              setMessages(prev => {
-                const newMessages = [...prev];
-                newMessages[newMessages.length - 1] = {
-                  ...newMessages[newMessages.length - 1],
-                  content: fullMarkdownResponse
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n').filter(line => line.trim());
+
+        for (const line of lines) {
+          try {
+            const json = JSON.parse(line);
+            if (json.message?.content) {
+              fullMarkdownResponse += json.message.content;
+
+              if (!streamingMessageAdded) {
+                const assistantMessage = {
+                  role: 'assistant',
+                  content: fullMarkdownResponse,
+                  timestamp: new Date()
                 };
-                return newMessages;
-              });
+                const chatWithResponse = {
+                  ...updatedChat,
+                  messages: [...updatedChat.messages, assistantMessage]
+                };
+                setChats(prev =>
+                  prev.map(c => c.id === currentChat.id ? chatWithResponse : c)
+                );
+                streamingMessageAdded = true;
+              } else {
+                setChats(prev =>
+                  prev.map(c => {
+                    if (c.id === currentChat.id) {
+                      const messages = [...c.messages];
+                      messages[messages.length - 1] = {
+                        ...messages[messages.length - 1],
+                        content: fullMarkdownResponse
+                      };
+                      return { ...c, messages };
+                    }
+                    return c;
+                  })
+                );
+              }
             }
+          } catch (e) {
+            // Ignore invalid JSON lines
           }
-        } catch (e) {
-          // Ignorar líneas que no sean JSON válido
         }
       }
+
+      console.log("Ollama response complete");
+
+      // Verificar que se recibió una respuesta
+      if (!fullMarkdownResponse.trim()) {
+        throw new Error('No response received from model');
+      }
+
+      // --- Enviar Markdown al backend Pandoc ---
+      console.log("Converting to PPTX...");
+      const convertResponse = await fetch('http://localhost:4000/convert', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          markdown: fullMarkdownResponse,
+          images: images,
+          template: selectedTemplate
+        })
+      });
+
+      if (convertResponse.ok) {
+        const blob = await convertResponse.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `presentation_${Date.now()}.pptx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        console.log("PPTX downloaded successfully");
+      } else {
+        console.error("Convert API error:", convertResponse.status);
+      }
+
+    } catch (error) {
+      console.error("❌ Error in sendMessage:", error);
+      alert(`Error: ${error.message}`);
+
+      // Keep the user message visible even if there's an error
+      setChats(prev =>
+        prev.map(c => c.id === currentChat.id ? updatedChat : c)
+      );
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
-
-    // Verificar que se recibió una respuesta
-    if (!fullMarkdownResponse.trim()) {
-      throw new Error('No response received from model');
-    }
-
-    // --- Enviar el Markdown al servidor Pandoc ---
-    const convertResponse = await fetch('http://localhost:4000/convert', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        markdown: fullMarkdownResponse,
-        images: images,
-        template: selectedTemplate
-      })
-    });
-
-    if (!convertResponse.ok) {
-      throw new Error(`Conversion failed: ${convertResponse.statusText}`);
-    }
-
-    // --- Descargar el archivo PPTX generado ---
-    const blob = await convertResponse.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `presentation_${Date.now()}.pptx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
-
-    console.log("✅ Presentation created and downloaded automatically.");
-
-  } catch (error) {
-    console.error('Error sending message:', error);
-    console.error('Error details:', error.message);
-    const errorMessage = {
-      role: 'assistant',
-      content: `⚠️ Error: ${error.message}\n\nPlease check:\n1. Ollama is running (http://localhost:11434)\n2. Server is running (http://localhost:4000)\n3. Console for more details`,
-      timestamp: new Date(),
-      isError: true
-    };
-    setMessages(prev => [...prev, errorMessage]);
-  } finally {
-    setIsLoading(false);
-  }
-};
-
-
-  const clearChat = () => {
-    setMessages([]);
   };
+
+  // --- Limpiar chat actual ---
+  const clearChat = () => {
+    if (!currentChat) return;
+    const cleared = { ...currentChat, messages: [] };
+    setChats(prev => prev.map(c => c.id === currentChat.id ? cleared : c));
+  };
+
+  // Show loading spinner while checking authentication
+  if (loading) {
+    return (
+      <div className="auth-loading">
+        <div className="loading-spinner"></div>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  // Show login if not authenticated
+  if (!isAuthenticated) {
+    return <Login />;
+  }
 
   return (
     <div className="app">
-      <div className="app-header">
-        <div className="header-content">
-          <h1>Ollama Chat</h1>
-          <div className="header-controls">
-            <ModelSelector
-              models={availableModels}
-              selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
+      <div className="sidebar">
+        <button onClick={createNewChat} className="new-chat">＋ New Chat</button>
+        {chats.map(chat => (
+          <div
+            key={chat.id}
+            className={`chat-item ${chat.id === currentChatId ? "active" : ""}`}
+            onClick={() => setCurrentChatId(chat.id)}
+          >
+            {chat.title}
+          </div>
+        ))}
+      </div>
+
+      <div className="chat-main">
+        <div className="app-header">
+          <div className="header-content">
+            <h1>{currentChat?.title || "Slidecraft"}</h1>
+            <div className="header-controls">
+              <ModelSelector
+                models={availableModels}
+                selectedModel={selectedModel}
+                onModelChange={setSelectedModel}
+              />
+              <button onClick={clearChat} className="clear-button">
+                Clear Chat
+              </button>
+              <UserMenu onOpenAdmin={() => setShowAdminPanel(true)} />
+            </div>
+          </div>
+        </div>
+
+        <div className="chat-container">
+          <div className="messages-container">
+            {(!currentChat || currentChat.messages.length === 0) && (
+              <div className="welcome-message">
+                <h2>Welcome to Ollama Chat</h2>
+                <p>Start a conversation with your AI assistant</p>
+              </div>
+            )}
+            {currentChat?.messages.map((msg, i) => (
+              <ChatMessage key={i} message={msg} />
+            ))}
+            {isLoading && (
+              <ChatMessage message={{
+                role: 'assistant',
+                content: 'Thinking...',
+                timestamp: new Date(),
+                isLoading: true
+              }} />
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <div className="input-area">
+            <TemplateSelector
+              selectedTemplate={selectedTemplate}
+              onTemplateChange={setSelectedTemplate}
             />
-            <button onClick={clearChat} className="clear-button">
-              Clear Chat
-            </button>
+            <ChatInput onSendMessage={sendMessage} disabled={isLoading} />
           </div>
         </div>
       </div>
-      
-      <div className="chat-container">
-        <div className="messages-container">
-          {messages.length === 0 && (
-            <div className="welcome-message">
-              <h2>Welcome to Ollama Chat</h2>
-              <p>Start a conversation with your AI assistant</p>
-              <div className="model-info">
-                Current model: <strong>{selectedModel}</strong>
-              </div>
-            </div>
-          )}
-          
-          {messages.map((message, index) => (
-            <ChatMessage key={index} message={message} />
-          ))}
-          
-          <div ref={messagesEndRef} />
-        </div>
-        
-        <div className="input-area">
-          <TemplateSelector 
-            selectedTemplate={selectedTemplate}
-            onTemplateChange={setSelectedTemplate}
-          />
-          <ChatInput onSendMessage={sendMessage} disabled={isLoading} />
-        </div>
-      </div>
+
+      {showAdminPanel && (
+        <AdminPanel onClose={() => setShowAdminPanel(false)} />
+      )}
     </div>
+  );
+}
+
+// App wrapper with AuthProvider
+function App() {
+  return (
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
   );
 }
 

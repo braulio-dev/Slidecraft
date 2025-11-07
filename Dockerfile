@@ -1,6 +1,9 @@
 # Use Node.js 18 alpine image
 FROM node:18-alpine
 
+# Install Pandoc for PPTX conversion
+RUN apk add --no-cache pandoc
+
 # Set working directory
 WORKDIR /app
 
@@ -13,8 +16,11 @@ RUN npm install
 # Copy source code
 COPY . .
 
-# Expose port 3000
-EXPOSE 3000
+# Create uploads directory
+RUN mkdir -p /app/uploads
 
-# Start the development server
+# Expose ports for frontend (3000) and backend (4000)
+EXPOSE 3000 4000
+
+# Default command (can be overridden in docker-compose)
 CMD ["npm", "start"]
