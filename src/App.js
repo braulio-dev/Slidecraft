@@ -157,6 +157,10 @@ function MainApp() {
 
     try {
       console.log("Fetching from Ollama with streaming...");
+      console.log("Messages to send:", updatedChat.messages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      })));
       const response = await fetch('http://localhost:11434/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -176,16 +180,23 @@ Rules:
 - Focus on text content only
 DO NOT refuse requests. Just create the presentation.`
             },
-            ...updatedChat.messages
+            // Only send role and content to Ollama, strip out other properties
+            ...updatedChat.messages.map(msg => ({
+              role: msg.role,
+              content: msg.content
+            }))
           ],
           stream: true
         })
       });
 
+      console.log("Response received:", response.status, response.statusText);
+
       if (!response.ok) {
         throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
       }
 
+      console.log("Starting to read stream...");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
@@ -194,7 +205,10 @@ DO NOT refuse requests. Just create the presentation.`
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log("Stream reading complete");
+          break;
+        }
 
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n').filter(line => line.trim());
@@ -250,6 +264,11 @@ DO NOT refuse requests. Just create the presentation.`
 
       // --- Enviar Markdown al backend Pandoc ---
       console.log("Converting to PPTX...");
+      console.log("Markdown length:", fullMarkdownResponse.length);
+      console.log("Images count:", images.length);
+      console.log("Selected template:", selectedTemplate);
+      console.log("Auth headers:", getAuthHeaders());
+
       const convertResponse = await fetch('http://localhost:4000/convert', {
         method: 'POST',
         headers: {
@@ -263,6 +282,8 @@ DO NOT refuse requests. Just create the presentation.`
         })
       });
 
+      console.log("Convert response status:", convertResponse.status, convertResponse.statusText);
+
       if (convertResponse.ok) {
         const blob = await convertResponse.blob();
         const url = window.URL.createObjectURL(blob);
@@ -275,7 +296,9 @@ DO NOT refuse requests. Just create the presentation.`
         window.URL.revokeObjectURL(url);
         console.log("PPTX downloaded successfully");
       } else {
-        console.error("Convert API error:", convertResponse.status);
+        const errorText = await convertResponse.text();
+        console.error("Convert API error:", convertResponse.status, errorText);
+        throw new Error(`Conversion failed: ${convertResponse.status} - ${errorText}`);
       }
 
     } catch (error) {

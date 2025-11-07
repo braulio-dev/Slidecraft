@@ -30,22 +30,31 @@ export async function convertMarkdownToPPTX(markdownText, outputFile, templatePa
     fs.writeFileSync(tempFile, processedMarkdown, 'utf8');
     console.log("📝 Markdown saved to:", tempFile);
 
-    // Verificar que pandoc está instalado
-    await new Promise((resolve, reject) => {
-      exec('pandoc --version', (error) => {
-        if (error) reject(new Error('Pandoc not installed or not accessible'));
-        resolve();
-      });
-    });
+    // Find pandoc executable - try common Windows locations
+    let pandocPath = 'pandoc'; // Default, try PATH first
+    const possiblePaths = [
+      'C:\\Program Files\\Pandoc\\pandoc.exe',
+      'C:\\Program Files (x86)\\Pandoc\\pandoc.exe',
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Pandoc', 'pandoc.exe'),
+      path.join(process.env.USERPROFILE || '', 'AppData', 'Local', 'Pandoc', 'pandoc.exe')
+    ];
+
+    for (const possiblePath of possiblePaths) {
+      if (fs.existsSync(possiblePath)) {
+        pandocPath = possiblePath;
+        console.log("📍 Found Pandoc at:", pandocPath);
+        break;
+      }
+    }
 
     // Construir comando con o sin template
     let command;
     if (templatePath) {
       console.log("🎨 Using template:", templatePath);
-      command = `pandoc "${tempFile}" -o "${outputFile}" --from markdown --to pptx --reference-doc="${templatePath}"`;
+      command = `"${pandocPath}" "${tempFile}" -o "${outputFile}" --from markdown --to pptx --reference-doc="${templatePath}"`;
     } else {
       console.log("📋 Using default Pandoc template");
-      command = `pandoc "${tempFile}" -o "${outputFile}" --from markdown --to pptx`;
+      command = `"${pandocPath}" "${tempFile}" -o "${outputFile}" --from markdown --to pptx`;
     }
 
     console.log("🔄 Running command:", command);
