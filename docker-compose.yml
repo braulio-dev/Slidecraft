@@ -75,7 +75,6 @@ services:
 
   chat-frontend:
     build: .
-    container_name: ollama-chat-frontend
     ports:
       - "3000:3000"
     depends_on:

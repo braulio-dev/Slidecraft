@@ -45,7 +45,6 @@ const UserMenu = ({ onOpenAdmin }) => {
               className="user-menu-item"
               onClick={handleAdminClick}
             >
-              <span>⚙️</span>
               <span>Admin Panel</span>
             </button>
           )}
@@ -54,7 +53,6 @@ const UserMenu = ({ onOpenAdmin }) => {
             className="user-menu-item logout"
             onClick={handleLogout}
           >
-            <span>🚪</span>
             <span>Logout</span>
           </button>
         </div>

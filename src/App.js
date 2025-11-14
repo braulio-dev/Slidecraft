@@ -19,9 +19,28 @@ function MainApp() {
   const [selectedModel, setSelectedModel] = useState('qwen2.5:7b-instruct');
   const [availableModels, setAvailableModels] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState('blank_default.pptx');
+  const [showChatHistory, setShowChatHistory] = useState(false);
   const messagesEndRef = useRef(null);
+  const chatHistoryRef = useRef(null);
 
   const currentChat = chats.find(c => c.id === currentChatId);
+
+  // Close chat history dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (chatHistoryRef.current && !chatHistoryRef.current.contains(event.target)) {
+        setShowChatHistory(false);
+      }
+    };
+
+    if (showChatHistory) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showChatHistory]);
 
   // --- Crear nuevo chat ---
   const createNewChat = useCallback(() => {
@@ -338,36 +357,55 @@ DO NOT refuse requests. Just create the presentation.`
 
   return (
     <div className="app">
-      <div className="sidebar">
-        <button onClick={createNewChat} className="new-chat">＋ New Chat</button>
-        {chats.map(chat => (
-          <div
-            key={chat.id}
-            className={`chat-item ${chat.id === currentChatId ? "active" : ""}`}
-            onClick={() => setCurrentChatId(chat.id)}
-          >
-            {chat.title}
+      <div className="app-header">
+        <div className="header-content">
+          <div className="header-left">
+            <div className="chat-history-dropdown" ref={chatHistoryRef}>
+              <button
+                className="chat-history-button"
+                onClick={() => setShowChatHistory(!showChatHistory)}
+              >
+                <span className="chat-title">{currentChat?.title || "Slidecraft"}</span>
+                <span className="dropdown-arrow">{showChatHistory ? '▲' : '▼'}</span>
+              </button>
+
+              {showChatHistory && (
+                <div className="chat-history-menu">
+                  <button onClick={() => { createNewChat(); setShowChatHistory(false); }} className="new-chat-item">
+                    <span>＋</span>
+                    <span>New Chat</span>
+                  </button>
+                  <div className="chat-history-divider"></div>
+                  <div className="chat-history-list">
+                    {chats.map(chat => (
+                      <div
+                        key={chat.id}
+                        className={`chat-history-item ${chat.id === currentChatId ? "active" : ""}`}
+                        onClick={() => { setCurrentChatId(chat.id); setShowChatHistory(false); }}
+                      >
+                        {chat.title}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        ))}
+          <div className="header-controls">
+            <ModelSelector
+              models={availableModels}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+            />
+            <button onClick={clearChat} className="clear-button">
+              Clear Chat
+            </button>
+            <UserMenu onOpenAdmin={() => setShowAdminPanel(true)} />
+          </div>
+        </div>
       </div>
 
       <div className="chat-main">
-        <div className="app-header">
-          <div className="header-content">
-            <h1>{currentChat?.title || "Slidecraft"}</h1>
-            <div className="header-controls">
-              <ModelSelector
-                models={availableModels}
-                selectedModel={selectedModel}
-                onModelChange={setSelectedModel}
-              />
-              <button onClick={clearChat} className="clear-button">
-                Clear Chat
-              </button>
-              <UserMenu onOpenAdmin={() => setShowAdminPanel(true)} />
-            </div>
-          </div>
-        </div>
 
         <div className="chat-container">
           <div className="messages-container">

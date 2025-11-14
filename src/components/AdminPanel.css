@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.7);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -12,13 +12,14 @@
 }
 
 .admin-panel {
-  background: white;
+  background-color: #2a2b32;
   border-radius: 12px;
   width: 90%;
   max-width: 1200px;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  border: 1px solid #565869;
 }
 
 .admin-panel-header {
@@ -26,24 +27,24 @@
   justify-content: space-between;
   align-items: center;
   padding: 24px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #565869;
   position: sticky;
   top: 0;
-  background: white;
+  background-color: #2a2b32;
   z-index: 1;
 }
 
 .admin-panel-header h2 {
   margin: 0;
   font-size: 24px;
-  color: #333;
+  color: #ffffff;
 }
 
 .close-button {
   background: none;
   border: none;
   font-size: 32px;
-  color: #999;
+  color: #9ca3af;
   cursor: pointer;
   width: 40px;
   height: 40px;
@@ -55,33 +56,33 @@
 }
 
 .close-button:hover {
-  background: #f5f5f5;
-  color: #333;
+  background-color: #565869;
+  color: #ffffff;
 }
 
 .admin-panel-loading {
   padding: 40px;
   text-align: center;
-  color: #999;
+  color: #9ca3af;
 }
 
 .error-banner {
-  background: #fee;
-  color: #c33;
+  background-color: #4a2c2c;
+  color: #ff6b6b;
   padding: 12px 20px;
   margin: 20px 24px;
   border-radius: 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border: 1px solid #fcc;
+  border: 1px solid #6b3434;
 }
 
 .error-banner button {
   background: none;
   border: none;
   font-size: 20px;
-  color: #c33;
+  color: #ff6b6b;
   cursor: pointer;
 }
 
@@ -132,17 +133,17 @@
 }
 
 .create-user-form {
-  background: #f8f9fa;
+  background-color: #343541;
   padding: 20px 24px;
   margin: 0 24px 20px 24px;
   border-radius: 8px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid #565869;
 }
 
 .create-user-form h3 {
   margin: 0 0 16px 0;
   font-size: 16px;
-  color: #333;
+  color: #ffffff;
 }
 
 .form-row {
@@ -154,24 +155,32 @@
 .form-row input,
 .form-row select {
   padding: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid #565869;
   border-radius: 6px;
   font-size: 14px;
+  background-color: #40414f;
+  color: #ffffff;
+}
+
+.form-row input:focus,
+.form-row select:focus {
+  outline: none;
+  border-color: #10a37f;
 }
 
 .form-row button {
   padding: 10px;
-  background: #4caf50;
-  color: white;
+  background-color: #10a37f;
+  color: #ffffff;
   border: none;
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background-color 0.2s;
 }
 
 .form-row button:hover {
-  background: #45a049;
+  background-color: #0d8c6d;
 }
 
 .users-table-container {
@@ -185,7 +194,7 @@
 }
 
 .users-table thead {
-  background: #f8f9fa;
+  background-color: #343541;
 }
 
 .users-table th {
@@ -193,19 +202,19 @@
   text-align: left;
   font-size: 14px;
   font-weight: 600;
-  color: #666;
-  border-bottom: 2px solid #e0e0e0;
+  color: #9ca3af;
+  border-bottom: 2px solid #565869;
 }
 
 .users-table td {
   padding: 16px 12px;
   font-size: 14px;
-  border-bottom: 1px solid #f0f0f0;
-  color: #333;
+  border-bottom: 1px solid #565869;
+  color: #ffffff;
 }
 
 .users-table tbody tr:hover {
-  background: #fafafa;
+  background-color: #343541;
 }
 
 .role-badge {
@@ -218,13 +227,13 @@
 }
 
 .role-badge.admin {
-  background: #e3f2fd;
-  color: #1976d2;
+  background-color: rgba(16, 163, 127, 0.2);
+  color: #10a37f;
 }
 
 .role-badge.employee {
-  background: #f3e5f5;
-  color: #7b1fa2;
+  background-color: rgba(102, 126, 234, 0.2);
+  color: #667eea;
 }
 
 .action-buttons {
@@ -234,24 +243,27 @@
 
 .action-btn {
   background: none;
-  border: 1px solid #ddd;
+  border: 1px solid #565869;
   padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 16px;
   transition: all 0.2s;
+  color: #ffffff;
 }
 
 .action-btn:hover {
-  background: #f5f5f5;
+  background-color: #565869;
 }
 
 .action-btn.delete:hover {
-  background: #fee;
-  border-color: #fcc;
+  background-color: #4a2c2c;
+  border-color: #6b3434;
+  color: #ff6b6b;
 }
 
 .action-btn.change-password:hover {
-  background: #e3f2fd;
-  border-color: #90caf9;
+  background-color: rgba(16, 163, 127, 0.2);
+  border-color: #10a37f;
+  color: #10a37f;
 }

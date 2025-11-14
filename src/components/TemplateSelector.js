@@ -38,7 +38,7 @@ function TemplateSelector({ selectedTemplate, onTemplateChange }) {
         onClick={() => setIsOpen(!isOpen)}
         title="Seleccionar plantilla"
       >
-        🎨 {selectedTemplate ? getTemplateName(selectedTemplate) : 'Plantilla'}
+        {selectedTemplate ? getTemplateName(selectedTemplate) : 'Plantilla'}
       </button>
 
       {isOpen && (
