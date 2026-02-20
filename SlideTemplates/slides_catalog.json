@@ -1,0 +1,148 @@
+{
+  "slides_catalog": [
+    {
+      "id": "SD001",
+      "tipo": "Title slide (portada)",
+      "cualidades": ["Presentación inicial", "Identidad visual"],
+      "elementos": ["título principal", "subtítulo opcional", "autor", "fecha", "imagen de fondo"]
+    },
+    {
+      "id": "SD002",
+      "tipo": "Agenda / outline",
+      "cualidades": ["Estructural", "Organizativa"],
+      "elementos": ["lista de secciones", "puntos clave"]
+    },
+    {
+      "id": "SD003",
+      "tipo": "Section divider",
+      "cualidades": ["Separador visual", "Transicional"],
+      "elementos": ["texto grande central"]
+    },
+    {
+      "id": "SD004",
+      "tipo": "Context overview",
+      "cualidades": ["Informativa", "Introductoria"],
+      "elementos": ["titulo", "texto breve", "imagen de apoyo"]
+    },
+    {
+      "id": "SD005",
+      "tipo": "Problem statement",
+      "cualidades": ["Analítica", "Descriptiva"],
+      "elementos": ["Problem statement", "problem statement redactado"]
+    },
+    {
+      "id": "SD006",
+      "tipo": "Bullet points",
+      "cualidades": ["Sintética", "Jerárquica"],
+      "elementos": ["Bullet points", "lista de puntos clave"]
+    },
+    {
+      "id": "SD007",
+      "tipo": "Two column comparison",
+      "cualidades": ["Comparativa", "Simétrica"],
+      "elementos": ["columna izquierda", "columna derecha"]
+    },
+    {
+      "id": "SD008",
+      "tipo": "Text and image",
+      "cualidades": ["Explicativa", "Visual"],
+      "elementos": ["bloque de texto", "imagen ilustrativa"]
+    },
+    {
+      "id": "SD009",
+      "tipo": "Quote slide",
+      "cualidades": ["Inspiracional", "Enfática"],
+      "elementos": ["cita destacada", "autor"]
+    },
+    {
+      "id": "SD010",
+      "tipo": "Definition slide",
+      "cualidades": ["Conceptual", "Aclaratoria"],
+      "elementos": ["término", "definición", "imagen"]
+    },
+    {
+      "id": "SD011",
+      "tipo": "Chart focus",
+      "cualidades": ["Estadística", "Cuantitativa"],
+      "elementos": ["gráfico principal"]
+    },
+    {
+      "id": "SD012",
+      "tipo": "KPI dashboard",
+      "cualidades": ["Métrica", "Rendimiento"],
+      "elementos": ["lines graph", "bar graph"]
+    },
+    {
+      "id": "SD013",
+      "tipo": "Data table",
+      "cualidades": ["Estructurada", "Detallada"],
+      "elementos": ["filas de datos", "columnas de datos"]
+    },
+    {
+      "id": "SD014",
+      "tipo": "Infographic layout",
+      "cualidades": ["Visual", "Narrativa"],
+      "elementos": ["imagen1", "imagen2", "imagen3", "imagen4"]
+    },
+    {
+      "id": "SD015",
+      "tipo": "Timeline",
+      "cualidades": ["Cronológica", "Secuencial"],
+      "elementos": ["eventos ordenados por tiempo"]
+    },
+    {
+      "id": "SD016",
+      "tipo": "Process steps",
+      "cualidades": ["Metódica", "Lineal"],
+      "elementos": ["Titulo", "pasos secuenciales"]
+    },
+    {
+      "id": "SD017",
+      "tipo": "Cause and effect",
+      "cualidades": ["Relacional", "Lógica"],
+      "elementos": ["causas", "consecuencias"]
+    },
+    {
+      "id": "SD018",
+      "tipo": "Before and after",
+      "cualidades": ["Comparativa", "Resultados"],
+      "elementos": ["Before", "After", "imagen inicial", "imagen final"]
+    },
+    {
+      "id": "SD019",
+      "tipo": "Case study",
+      "cualidades": ["Narrativa", "Práctica"],
+      "elementos": ["problema", "solución", "resultados"]
+    },
+    {
+      "id": "SD020",
+      "tipo": "Summary slide",
+      "cualidades": ["Conclusiva", "Sintética"],
+      "elementos": ["Summary", "Texto de resumen"]
+    },
+    {
+      "id": "SD021",
+      "tipo": "Call to action",
+      "cualidades": ["Directiva", "Motivadora"],
+      "elementos": ["acción esperada", "imagten"]
+    },
+    {
+      "id": "SD022",
+      "tipo": "Q and A slide",
+      "cualidades": ["Interactiva", "Abierta"],
+      "elementos": ["espacio para preguntas"]
+    },
+    {
+      "id": "SD023",
+      "tipo": "References slide",
+      "cualidades": ["Académica", "Verificable"],
+      "elementos": ["fuentes", "bibliografía"]
+    },
+    {
+      "id": "SD024",
+      "tipo": "Thank you slide",
+      "cualidades": ["Cierre", "Cordial"],
+      "elementos": ["mensaje de agradecimiento", "contacto"]
+    }
+  ]
+}
