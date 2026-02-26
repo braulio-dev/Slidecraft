@@ -1,3 +1,9 @@
+body, html {
+  margin: 0;
+  padding: 0;
+  overflow: hidden; 
+}
+
 .app {
   height: 100vh;
   display: flex;
@@ -62,17 +68,33 @@
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
-  overflow-y: auto;
-  height: calc(100vh - 80px);
+  min-height: 0; /*Forces inner content to use a scrollbar */
+  overflow: hidden; /* Keeps the input area docked safely */
 }
 
 .messages-container {
   flex: 1;
-  overflow-y: auto;
+  overflow-y: auto; /* scrollbar*/
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  
+  /* Scrollbar Styling */
+  scrollbar-width: thin;
+  scrollbar-color: #565869 transparent;
+}
+
+/* Chrome/Edge/Safari Scrollbar Styling */
+.messages-container::-webkit-scrollbar {
+  width: 8px;
+}
+.messages-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+.messages-container::-webkit-scrollbar-thumb {
+  background-color: #565869;
+  border-radius: 4px;
 }
 
 .input-area {
@@ -229,6 +251,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0; /*Stops the container from expanding past the screen */
 }
 
 /* Authentication Loading Styles */

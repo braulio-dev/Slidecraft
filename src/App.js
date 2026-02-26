@@ -22,6 +22,7 @@ function MainApp() {
   const [showChatHistory, setShowChatHistory] = useState(false);
   const messagesEndRef = useRef(null);
   const chatHistoryRef = useRef(null);
+  const messagesContainerRef = useRef(null); 
 
   const currentChat = chats.find(c => c.id === currentChatId);
 
@@ -53,11 +54,40 @@ function MainApp() {
     setCurrentChatId(newChat.id);
   }, [chats.length]);
 
-  // --- Scroll automático ---
+  // --- Scroll automático (Híbrido) ---
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // The setTimeout allows React to finish rendering before scrolling
+    setTimeout(() => {
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTo({
+          top: messagesContainerRef.current.scrollHeight,
+          behavior: "smooth"
+        });
+      }
+    }, 50);
   };
-  useEffect(scrollToBottom, [currentChat?.messages]);
+
+  // 1. Scroll cuando llega un MENSAJE NUEVO (usando .length)
+  useEffect(() => {
+    if (currentChat?.messages?.length > 0) {
+      scrollToBottom();
+    }
+  }, [currentChat?.messages?.length]); // ¡El .length es clave aquí!
+
+  // 2. Scroll opcional para acompañar el STREAMING (solo si el usuario ya está abajo)
+  useEffect(() => {
+    // Obtenemos el contenedor padre (messages-container)
+    const container = messagesEndRef.current?.parentElement;
+    if (!container) return;
+
+    // Calculamos si el usuario está cerca del fondo (a menos de 100px)
+    const isNearBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
+
+    // Si está leyendo el final, acompañamos el texto que se está generando
+    if (isNearBottom) {
+      scrollToBottom();
+    }
+  }, [currentChat?.messages]); // Este sí escucha cada actualización del streaming
 
   // --- Cargar modelos disponibles ---
   useEffect(() => { fetchAvailableModels(); }, []);
@@ -408,7 +438,8 @@ DO NOT refuse requests. Just create the presentation.`
       <div className="chat-main">
 
         <div className="chat-container">
-          <div className="messages-container">
+          {/* Added the ref here so the Javascript knows what container to scroll */}
+          <div className="messages-container" ref={messagesContainerRef}>
             {(!currentChat || currentChat.messages.length === 0) && (
               <div className="welcome-message">
                 <h2>Welcome to Ollama Chat</h2>
@@ -442,6 +473,8 @@ DO NOT refuse requests. Just create the presentation.`
       {showAdminPanel && (
         <AdminPanel onClose={() => setShowAdminPanel(false)} />
       )}
+
+      
     </div>
   );
 }
