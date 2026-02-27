@@ -5,6 +5,8 @@ import cors from "cors";
 import { fileURLToPath } from "url";
 import { convertMarkdownToPPTX } from "./convertToPPTX.mjs";
 
+import { generateThumbnails } from "../scripts/generate-thumbnails.mjs";
+
 const app = express();
 const PORT = 4000;
 
@@ -12,6 +14,14 @@ const PORT = 4000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Connect to MongoDB
+connectDB();
+
+try {
+  generateThumbnails();
+} catch (err) {
+  console.error('Thumbnail generation failed:', err.message);
+}
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
@@ -52,13 +62,16 @@ app.get("/api/templates", (req, res) => {
       .map(file => {
         const baseName = file.replace('.pptx', '');
         
-        // Buscar thumbnail PNG o SVG
+        // Buscar thumbnail PNG, JPEG o SVG (prioridad: PNG > JPEG > SVG)
         const pngPath = path.join(thumbnailsDir, `${baseName}.png`);
+        const jpegPath = path.join(thumbnailsDir, `${baseName}.jpeg`);
         const svgPath = path.join(thumbnailsDir, `${baseName}.svg`);
         
         let thumbnailUrl = null;
         if (fs.existsSync(pngPath)) {
           thumbnailUrl = `/thumbnails/${baseName}.png`;
+        } else if (fs.existsSync(jpegPath)) {
+          thumbnailUrl = `/thumbnails/${baseName}.jpeg`;
         } else if (fs.existsSync(svgPath)) {
           thumbnailUrl = `/thumbnails/${baseName}.svg`;
         }

@@ -1,20 +1,9 @@
-# Use Node.js 18 alpine image
-FROM node:18-alpine
-
-# Set working directory
+FROM node:18-slim
+RUN apt-get update && apt-get install -y --no-install-recommends pandoc libreoffice-impress poppler-utils fonts-dejavu fonts-freefont-ttf fonts-noto-color-emoji && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-
-# Copy package files
 COPY package*.json ./
-
-# Install dependencies
 RUN npm install
-
-# Copy source code
 COPY . .
-
-# Expose port 3000
-EXPOSE 3000
-
-# Start the development server
+RUN mkdir -p /app/uploads /app/public/thumbnails
+EXPOSE 3000 4000
 CMD ["npm", "start"]

@@ -1,138 +1,157 @@
-// Script para generar miniaturas SVG de las plantillas
+
+// Genera miniaturas PNG de la primera diapositiva de cada PPTX usando LibreOffice
+
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname  = path.dirname(__filename);
 
-const thumbnailsDir = path.resolve(__dirname, '../public/thumbnails');
+/* ------------------------------------------------------------------ */
+/*  Public API                                                         */
+/* ------------------------------------------------------------------ */
 
-// Crear directorio si no existe
-if (!fs.existsSync(thumbnailsDir)) {
-  fs.mkdirSync(thumbnailsDir, { recursive: true });
-}
+/**
+ * Scan the templates/ folder and generate a PNG thumbnail for each .pptx
+ * file whose thumbnail is missing or outdated.
+ *
+ * @param {string} [basePath]  Project root (defaults to .. relative to this file)
+ */
+export function generateThumbnails(basePath) {
+  const root          = basePath || path.resolve(__dirname, '..');
+  const templatesDir  = path.join(root, 'templates');
+  const thumbnailsDir = path.join(root, 'public', 'thumbnails');
 
-// Definir plantillas con sus colores
-const templates = {
-  'blank_default': { 
-    color: '#ffffff', 
-    textColor: '#333333',
-    title: 'Blank Default',
-    subtitle: 'Plantilla blanca limpia'
-  },
-  'template': { 
-    color: '#4a90e2', 
-    textColor: '#ffffff',
-    title: 'Template',
-    subtitle: 'Plantilla con diseño azul'
-  },
-  'template_custom': { 
-    color: '#f5a623', 
-    textColor: '#ffffff',
-    title: 'Template Custom',
-    subtitle: 'Plantilla personalizada'
-  },
-  'templateFull': { 
-    color: '#9b59b6', 
-    textColor: '#ffffff',
-    title: 'Template Full',
-    subtitle: 'Plantilla completa'
-  },
-  'modern_dark': { 
-    color: '#2c3e50', 
-    textColor: '#ffffff',
-    title: 'Modern Dark',
-    subtitle: 'Diseño oscuro moderno'
-  },
-  'vibrant_gradient': { 
-    color: '#e74c3c', 
-    textColor: '#ffffff',
-    title: 'Vibrant Gradient',
-    subtitle: 'Gradientes vibrantes'
-  },
-  'professional_blue': { 
-    color: '#3498db', 
-    textColor: '#ffffff',
-    title: 'Professional Blue',
-    subtitle: 'Profesional azul'
-  },
-  'elegant_purple': { 
-    color: '#9b59b6', 
-    textColor: '#ffffff',
-    title: 'Elegant Purple',
-    subtitle: 'Elegante morado'
-  },
-  'fresh_green': { 
-    color: '#27ae60', 
-    textColor: '#ffffff',
-    title: 'Fresh Green',
-    subtitle: 'Verde fresco'
-  },
-  'warm_orange': { 
-    color: '#e67e22', 
-    textColor: '#ffffff',
-    title: 'Warm Orange',
-    subtitle: 'Naranja cálido'
-  },
-  'minimal_gray': { 
-    color: '#95a5a6', 
-    textColor: '#ffffff',
-    title: 'Minimal Gray',
-    subtitle: 'Minimalista gris'
-  },
-  'creative_pink': { 
-    color: '#e91e63', 
-    textColor: '#ffffff',
-    title: 'Creative Pink',
-    subtitle: 'Rosa creativo'
+  try {
+    fs.mkdirSync(thumbnailsDir, { recursive: true });
+
+    if (!fs.existsSync(templatesDir)) {
+      console.log('⚠️  No templates/ directory - skipping thumbnail generation');
+      return;
+    }
+
+    const pptxFiles = fs.readdirSync(templatesDir).filter(f => f.endsWith('.pptx'));
+    if (pptxFiles.length === 0) {
+      console.log('ℹ️  No .pptx templates found');
+      return;
+    }
+
+    // Check if LibreOffice and pdftoppm are available
+    const hasLibreOffice = commandExists('libreoffice');
+    const hasPdftoppm    = commandExists('pdftoppm');
+
+    if (!hasLibreOffice || !hasPdftoppm) {
+      console.log('⚠️  LibreOffice or pdftoppm not found - cannot generate real thumbnails');
+      console.log(`    libreoffice: ${hasLibreOffice ? '✅' : '❌'}  pdftoppm: ${hasPdftoppm ? '✅' : '❌'}`);
+      return;
+    }
+
+    console.log(`🖼️  Checking thumbnails for ${pptxFiles.length} template(s)...`);
+
+    const stats = { generated: 0, cached: 0, failed: 0 };
+
+    for (const file of pptxFiles) {
+      const baseName  = file.replace('.pptx', '');
+      const pptxPath  = path.join(templatesDir, file);
+      const pptxMtime = fs.statSync(pptxPath).mtimeMs;
+
+      // -- Cache check --
+      const pngPath = path.join(thumbnailsDir, `${baseName}.png`);
+      if (fs.existsSync(pngPath) && fs.statSync(pngPath).mtimeMs >= pptxMtime) {
+        stats.cached++;
+        continue;
+      }
+
+      // -- Render first slide --
+      if (renderFirstSlide(pptxPath, pngPath, baseName)) {
+        // Remove stale SVG / JPEG if present
+        cleanStaleFormats(thumbnailsDir, baseName);
+        stats.generated++;
+      } else {
+        stats.failed++;
+      }
+    }
+
+    console.log(
+      `📊 Thumbnails: ${stats.generated} generated, ${stats.cached} cached, ${stats.failed} failed`
+    );
+  } catch (error) {
+    console.error('❌ Thumbnail generation error:', error.message);
   }
-};
-
-console.log('🎨 Generando miniaturas SVG de plantillas...\n');
-
-for (const [filename, config] of Object.entries(templates)) {
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="960" height="540" viewBox="0 0 960 540" xmlns="http://www.w3.org/2000/svg">
-  <!-- Fondo -->
-  <rect width="960" height="540" fill="${config.color}"/>
-  
-  <!-- Línea decorativa superior -->
-  <rect x="0" y="0" width="960" height="8" fill="rgba(0,0,0,0.1)"/>
-  
-  <!-- Título -->
-  <text x="480" y="200" 
-        font-family="Arial, sans-serif" 
-        font-size="72" 
-        font-weight="bold"
-        fill="${config.textColor}" 
-        text-anchor="middle">
-    ${config.title}
-  </text>
-  
-  <!-- Subtítulo -->
-  <text x="480" y="280" 
-        font-family="Arial, sans-serif" 
-        font-size="32" 
-        fill="${config.textColor}" 
-        text-anchor="middle"
-        opacity="0.9">
-    ${config.subtitle}
-  </text>
-  
-  <!-- Decoración inferior -->
-  <circle cx="480" cy="420" r="40" fill="rgba(255,255,255,0.2)"/>
-  <circle cx="380" cy="420" r="20" fill="rgba(255,255,255,0.1)"/>
-  <circle cx="580" cy="420" r="20" fill="rgba(255,255,255,0.1)"/>
-  
-  <!-- Línea decorativa inferior -->
-  <rect x="0" y="532" width="960" height="8" fill="rgba(0,0,0,0.1)"/>
-</svg>`;
-
-  const outputPath = path.join(thumbnailsDir, `${filename}.svg`);
-  fs.writeFileSync(outputPath, svg);
-  console.log(`✅ Creada: ${filename}.svg`);
 }
 
-console.log('\n✨ Todas las miniaturas SVG han sido creadas!');
-console.log(`📁 Ubicación: ${thumbnailsDir}`);
+/* ------------------------------------------------------------------ */
+/*  Internal helpers                                                   */
+/* ------------------------------------------------------------------ */
+
+function commandExists(cmd) {
+  try {
+    execSync(`command -v ${cmd}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * PPTX  ->  PDF (via LibreOffice)  ->  first-page PNG (via pdftoppm)
+ */
+function renderFirstSlide(pptxPath, pngOutPath, label) {
+  const tmpDir = fs.mkdtempSync(path.join(path.dirname(pngOutPath), '.thumb-'));
+
+  try {
+    // 1. PPTX -> PDF   (set HOME to writable dir so LO doesn't fail as root)
+    execSync(
+      `libreoffice --headless --norestore --convert-to pdf --outdir "${tmpDir}" "${pptxPath}"`,
+      { stdio: 'pipe', timeout: 120_000, env: { ...process.env, HOME: tmpDir } }
+    );
+
+    const pdfName = path.basename(pptxPath).replace('.pptx', '.pdf');
+    const pdfPath = path.join(tmpDir, pdfName);
+
+    if (!fs.existsSync(pdfPath)) {
+      console.log(`  ❌ ${label} - LibreOffice did not produce a PDF`);
+      return false;
+    }
+
+    // 2. First page of PDF -> PNG  (resolution 150 dpi ~ 1500x840 for 16:9)
+    const pngPrefix = path.join(tmpDir, label);
+    execSync(
+      `pdftoppm -f 1 -l 1 -png -r 150 -singlefile "${pdfPath}" "${pngPrefix}"`,
+      { stdio: 'ignore', timeout: 15_000 }
+    );
+
+    const renderedPng = `${pngPrefix}.png`;
+    if (!fs.existsSync(renderedPng)) {
+      console.log(`  ❌ ${label} - pdftoppm did not produce a PNG`);
+      return false;
+    }
+
+    // 3. Move to final location
+    fs.copyFileSync(renderedPng, pngOutPath);
+    console.log(`  ✅ ${label} - first-slide thumbnail generated`);
+    return true;
+  } catch (error) {
+    console.error(`  ❌ ${label} - render error: ${error.message}`);
+    return false;
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  }
+}
+
+function cleanStaleFormats(dir, baseName) {
+  for (const ext of ['svg', 'jpeg', 'jpg']) {
+    const p = path.join(dir, `${baseName}.${ext}`);
+    try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch {}
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Standalone execution                                               */
+/* ------------------------------------------------------------------ */
+const currentFile = fileURLToPath(import.meta.url);
+if (process.argv[1] === currentFile) {
+  generateThumbnails();
+}
