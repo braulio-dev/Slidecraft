@@ -20,6 +20,9 @@ import adminRoutes from "../routes/admin.mjs";
 // Import middleware
 import { authenticateToken } from "../middleware/auth.mjs";
 
+// Import thumbnail generator
+import { generateThumbnails } from "../scripts/generate-thumbnails.mjs";
+
 const app = express();
 const PORT = 4000;
 
@@ -29,6 +32,13 @@ const __dirname = path.dirname(__filename);
 
 // Connect to MongoDB
 connectDB();
+
+// Generate real thumbnails from PPTX templates on startup
+try {
+  generateThumbnails();
+} catch (err) {
+  console.error('⚠️ Thumbnail generation failed (non-fatal):', err.message);
+}
 
 // --- Middlewares ---
 app.use(cors());
@@ -75,13 +85,16 @@ app.get("/api/templates", (req, res) => {
       .map(file => {
         const baseName = file.replace('.pptx', '');
         
-        // Buscar thumbnail PNG o SVG
+        // Buscar thumbnail PNG, JPEG o SVG (prioridad: PNG > JPEG > SVG)
         const pngPath = path.join(thumbnailsDir, `${baseName}.png`);
+        const jpegPath = path.join(thumbnailsDir, `${baseName}.jpeg`);
         const svgPath = path.join(thumbnailsDir, `${baseName}.svg`);
         
         let thumbnailUrl = null;
         if (fs.existsSync(pngPath)) {
           thumbnailUrl = `/thumbnails/${baseName}.png`;
+        } else if (fs.existsSync(jpegPath)) {
+          thumbnailUrl = `/thumbnails/${baseName}.jpeg`;
         } else if (fs.existsSync(svgPath)) {
           thumbnailUrl = `/thumbnails/${baseName}.svg`;
         }
