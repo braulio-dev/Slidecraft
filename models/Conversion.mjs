@@ -27,8 +27,17 @@ const conversionSchema = new mongoose.Schema({
   metadata: {
     slideCount: Number,
     characterCount: Number,
-    generationTime: Number
-  }
+    generationTime: Number,
+    imagesCount: Number,
+    template: String
+  },
+  slides: [
+    {
+      slideNumber: Number,
+      type: String,
+      title: String
+    }
+  ]
 });
 
 // Index for efficient querying by user and timestamp
