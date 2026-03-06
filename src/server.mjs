@@ -12,6 +12,7 @@ dotenv.config();
 // Import MongoDB connection and models
 import connectDB from "../db/connection.mjs";
 import Conversion from "../models/Conversion.mjs";
+import SlideType from "../models/SlideType.mjs";
 
 // Import routes
 import authRoutes from "../routes/auth.mjs";
@@ -102,6 +103,47 @@ app.get("/api/templates", (req, res) => {
   }
 });
 
+// --- Helper: detect slide types from markdown ---
+function detectSlides(markdown) {
+  const slides = [];
+  const lines = markdown.split('\n');
+  let currentSlide = null;
+  let slideNumber = 0;
+
+  for (const line of lines) {
+    if (line.startsWith('# ') && !line.startsWith('## ')) {
+      if (currentSlide) slides.push(currentSlide);
+      slideNumber++;
+      currentSlide = { slideNumber, type: 'title', title: line.replace(/^#\s+/, ''), hasImage: false, hasBullets: false };
+    } else if (line.startsWith('## ')) {
+      if (currentSlide) slides.push(currentSlide);
+      slideNumber++;
+      currentSlide = { slideNumber, type: 'content', title: line.replace(/^##\s*/, ''), hasImage: false, hasBullets: false };
+    } else if (currentSlide) {
+      if (line.startsWith('- ') || line.startsWith('* ')) currentSlide.hasBullets = true;
+      if (line.startsWith('![')) currentSlide.hasImage = true;
+    }
+  }
+  if (currentSlide) slides.push(currentSlide);
+
+  return slides.map(s => ({
+    slideNumber: s.slideNumber,
+    title: s.title,
+    type: s.hasImage ? 'image' : s.type
+  }));
+}
+
+// --- Endpoint: listar slide types ---
+app.get("/api/slide-types", async (req, res) => {
+  try {
+    const types = await SlideType.find({});
+    res.json({ slideTypes: types });
+  } catch (error) {
+    console.error("Error fetching slide types:", error);
+    res.status(500).json({ error: "Failed to fetch slide types" });
+  }
+});
+
 app.post("/convert", authenticateToken, async (req, res) => {
   try {
     console.log("✅ /convert endpoint hit by user:", req.user.username);
@@ -188,7 +230,8 @@ app.post("/convert", authenticateToken, async (req, res) => {
     const generationTime = Date.now() - startTime;
 
     // --- Guardar registro en MongoDB ---
-    const slideCount = (processedMarkdown.match(/^##\s/gm) || []).length;
+    const detectedSlides = detectSlides(processedMarkdown);
+    const slideCount = detectedSlides.length;
     const conversion = new Conversion({
       userId: req.user._id,
       markdown: processedMarkdown,
@@ -200,7 +243,8 @@ app.post("/convert", authenticateToken, async (req, res) => {
         generationTime: generationTime,
         imagesCount: images?.length || 0,
         template: template || 'blank_default.pptx'
-      }
+      },
+      slides: detectedSlides
     });
 
     await conversion.save();
