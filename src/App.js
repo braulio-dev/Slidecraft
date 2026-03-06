@@ -20,6 +20,8 @@ function MainApp() {
   const [availableModels, setAvailableModels] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState('blank_default.pptx');
   const [showChatHistory, setShowChatHistory] = useState(false);
+  const [slideTypes, setSlideTypes] = useState([]);
+  const [currentMarkdown, setCurrentMarkdown] = useState(null);
   const messagesEndRef = useRef(null);
   const chatHistoryRef = useRef(null);
 
@@ -51,6 +53,7 @@ function MainApp() {
     };
     setChats(prev => [newChat, ...prev]);
     setCurrentChatId(newChat.id);
+    setCurrentMarkdown(null);
   }, [chats.length]);
 
   // --- Scroll automático ---
@@ -58,6 +61,14 @@ function MainApp() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
   useEffect(scrollToBottom, [currentChat?.messages]);
+
+  // --- Cargar slide types desde backend ---
+  useEffect(() => {
+    fetch('http://localhost:4000/api/slide-types')
+      .then(res => res.json())
+      .then(data => { if (data.slideTypes) setSlideTypes(data.slideTypes); })
+      .catch(() => {});
+  }, []);
 
   // --- Cargar modelos disponibles ---
   useEffect(() => { fetchAvailableModels(); }, []);
@@ -137,6 +148,42 @@ function MainApp() {
     localStorage.setItem("ollama_chats", JSON.stringify(chats));
   }, [chats]);
 
+  // --- Construir system prompt con slide types ---
+  const buildSystemPrompt = (types) => {
+    const baseRules = `You are a professional presentation creator. Generate presentations in Markdown format ONLY.
+
+SLIDE TYPES you must use:
+- TITLE SLIDE: Start with "# Title" on its own line, then a subtitle or short description on the next line. Use this for the FIRST slide only.
+- CONTENT SLIDE: Use "## Slide Title" followed by bullet points with "-". Use this for most slides.
+- IMAGE SLIDE: Use "## " (empty heading) when the slide should show an image. Do NOT add image markdown, images are added separately.
+- CLOSING SLIDE: Use "# Conclusion" or "# Thank You" for the last slide, followed by a closing line.
+
+RULES:
+- Always start with a TITLE SLIDE (# heading)
+- Keep bullet points short and direct
+- DO NOT include image markdown tags
+- DO NOT refuse requests — just create the presentation`;
+
+    if (!types || types.length === 0) return baseRules;
+
+    const typeList = types.map(t =>
+      `- ${t.name.toUpperCase()}: ${t.description}\n  Example:\n  ${t.markdownPattern.split('\n').join('\n  ')}`
+    ).join('\n');
+
+    return `${baseRules}\n\nAVAILABLE SLIDE TYPES FROM SYSTEM:\n${typeList}`;
+  };
+
+  // --- Construir prompt de edición cuando hay una presentación activa ---
+  const buildEditingPrompt = (markdown) => {
+    return `You are editing an existing presentation. Here is the current markdown:
+
+---
+${markdown}
+---
+
+The user will give you instructions to modify it. Return the COMPLETE updated markdown only — all slides, not just the changed ones. Follow the same slide type rules (# for title slide, ## for content slides). If the user asks for an entirely new presentation on a different topic, create a fresh one instead.`;
+  };
+
   // --- Enviar mensaje ---
   const sendMessage = async (message, images = []) => {
     if (!message.trim() && images.length === 0) {
@@ -188,16 +235,9 @@ function MainApp() {
           messages: [
             {
               role: "system",
-              content: `You are a presentation creator. Generate presentations in Markdown format ONLY.
-Rules:
-- Start with # for the title
-- Use ## for each slide title
-- Use bullet points with - for content
-- Keep it to 3-5 slides maximum
-- Be direct and concise
-- DO NOT include image placeholders in markdown (images will be added separately)
-- Focus on text content only
-DO NOT refuse requests. Just create the presentation.`
+              content: currentMarkdown
+                ? buildEditingPrompt(currentMarkdown)
+                : buildSystemPrompt(slideTypes)
             },
             // Only send role and content to Ollama, strip out other properties
             ...updatedChat.messages.map(msg => ({
@@ -313,6 +353,7 @@ DO NOT refuse requests. Just create the presentation.`
         a.click();
         a.remove();
         window.URL.revokeObjectURL(url);
+        setCurrentMarkdown(fullMarkdownResponse);
         console.log("PPTX downloaded successfully");
       } else {
         const errorText = await convertResponse.text();
@@ -338,6 +379,7 @@ DO NOT refuse requests. Just create the presentation.`
     if (!currentChat) return;
     const cleared = { ...currentChat, messages: [] };
     setChats(prev => prev.map(c => c.id === currentChat.id ? cleared : c));
+    setCurrentMarkdown(null);
   };
 
   // Show loading spinner while checking authentication
@@ -430,6 +472,14 @@ DO NOT refuse requests. Just create the presentation.`
           </div>
 
           <div className="input-area">
+            {currentMarkdown && (
+              <div className="editing-banner">
+                <span>Editing active presentation</span>
+                <button className="new-presentation-button" onClick={() => setCurrentMarkdown(null)}>
+                  New Presentation
+                </button>
+              </div>
+            )}
             <TemplateSelector
               selectedTemplate={selectedTemplate}
               onTemplateChange={setSelectedTemplate}

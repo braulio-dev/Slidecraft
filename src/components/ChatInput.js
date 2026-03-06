@@ -90,6 +90,7 @@ function ChatInput({ onSendMessage, disabled }) {
           <textarea
             ref={textareaRef}
             value={message}
+            maxLength={4096}// prueba maximo de caracteres
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
