@@ -336,18 +336,24 @@ DO NOT refuse requests. Just create the presentation.`
       if (convertResponse.ok) {
         const blob = await convertResponse.blob();
         const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `presentation_${Date.now()}.pptx`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-        console.log("PPTX downloaded successfully");
-      } else {
-        const errorText = await convertResponse.text();
-        console.error("Convert API error:", convertResponse.status, errorText);
-        throw new Error(`Conversion failed: ${convertResponse.status} - ${errorText}`);
+        
+        // Instead of a.click(), we update the chat message with the URL
+        setChats(prev =>
+          prev.map(c => {
+            if (c.id === currentChat.id) {
+              const messages = [...c.messages];
+              const lastIndex = messages.length - 1;
+              messages[lastIndex] = {
+                ...messages[lastIndex],
+                downloadUrl: url, // Store the URL here
+                fileName: `presentation_${Date.now()}.pptx`
+              };
+              return { ...c, messages };
+            }
+            return c;
+          })
+        );
+        console.log("✅ Presentation ready for download");
       }
 
     } catch (error) {

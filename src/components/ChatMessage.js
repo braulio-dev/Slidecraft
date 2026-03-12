@@ -6,7 +6,9 @@ import './ChatMessage.css';
 
 function ChatMessage({ message }) {
   const formatTime = (timestamp) => {
-    return timestamp.toLocaleTimeString('en-US', { 
+    // Check if timestamp is a valid Date object
+    const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+    return date.toLocaleTimeString('en-US', { 
       hour: '2-digit', 
       minute: '2-digit' 
     });
@@ -73,6 +75,20 @@ function ChatMessage({ message }) {
                       <img src={img.data} alt={img.name} />
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* --- BOTÓN DE DESCARGA --- */}
+              {message.downloadUrl && (
+                <div className="message-download-container">
+                  <a 
+                    href={message.downloadUrl} 
+                    download={message.fileName || "presentation.pptx"} 
+                    className="download-pptx-button"
+                  >
+                    <span className="download-icon">📊</span>
+                    Download Presentation (.pptx)
+                  </a>
                 </div>
               )}
             </>
