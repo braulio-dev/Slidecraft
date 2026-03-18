@@ -1,8 +1,8 @@
 # Use Node.js 18 alpine image
 FROM node:18-alpine
 
-# Install Pandoc for PPTX conversion
-RUN apk add --no-cache pandoc
+# Install Pandoc for PPTX conversion and LibreOffice for PDF export
+RUN apk add --no-cache pandoc libreoffice ttf-dejavu fontconfig
 
 # Set working directory
 WORKDIR /app

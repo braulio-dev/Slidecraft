@@ -1,6 +1,7 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
+import { exec } from "child_process";
 import cors from "cors";
 import { fileURLToPath } from "url";
 import { convertMarkdownToPPTX } from "./convertToPPTX.mjs";
@@ -129,7 +130,7 @@ function detectSlides(markdown) {
   return slides.map(s => ({
     slideNumber: s.slideNumber,
     title: s.title,
-    type: s.hasImage ? 'image' : s.type
+    slideType: s.hasImage ? 'image' : s.type
   }));
 }
 
@@ -262,6 +263,64 @@ app.post("/convert", authenticateToken, async (req, res) => {
       error: "Error converting markdown to PPTX",
       details: error.message
     });
+  }
+});
+
+// --- Helper: locate LibreOffice executable ---
+function findLibreOffice() {
+  const candidates = [
+    'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+    'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'LibreOffice', 'program', 'soffice.exe'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return 'soffice'; // fall back to PATH
+}
+
+// --- Endpoint: convert saved PPTX to PDF via LibreOffice (Protected) ---
+app.post("/convert-to-pdf", authenticateToken, async (req, res) => {
+  const { pptxBase64, filename } = req.body;
+  if (!pptxBase64) return res.status(400).json({ error: "No PPTX data provided" });
+
+  const outputDir = path.resolve(__dirname, `../uploads/${req.user._id}`);
+  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
+  const timestamp = Date.now();
+  const pptxFile = path.join(outputDir, `temp_${timestamp}.pptx`);
+  const pdfFile = path.join(outputDir, `temp_${timestamp}.pdf`);
+
+  try {
+    const base64Data = pptxBase64.replace(/^data:[^;]+;base64,/, '');
+    fs.writeFileSync(pptxFile, Buffer.from(base64Data, 'base64'));
+
+    const soffice = findLibreOffice();
+    console.log("📄 Using LibreOffice at:", soffice);
+    await new Promise((resolve, reject) => {
+      exec(
+        `"${soffice}" --headless --norestore --convert-to pdf --outdir "${outputDir}" "${pptxFile}"`,
+        { shell: true, timeout: 30000 },
+        (error, stdout, stderr) => {
+          console.log("LibreOffice stdout:", stdout);
+          if (stderr) console.warn("LibreOffice stderr:", stderr);
+          if (error) reject(new Error(`LibreOffice failed: ${stderr || error.message}`));
+          else resolve(stdout);
+        }
+      );
+    });
+
+    if (!fs.existsSync(pdfFile)) throw new Error("LibreOffice ran but no PDF was produced. Check that soffice is in PATH or installed at a standard location.");
+
+    const downloadName = filename ? filename.replace(/\.pptx$/i, '.pdf') : `presentation_${timestamp}.pdf`;
+    res.download(pdfFile, downloadName, () => {
+      if (fs.existsSync(pptxFile)) fs.unlinkSync(pptxFile);
+      if (fs.existsSync(pdfFile)) fs.unlinkSync(pdfFile);
+    });
+  } catch (error) {
+    if (fs.existsSync(pptxFile)) fs.unlinkSync(pptxFile);
+    console.error("❌ PDF conversion error:", error.message);
+    res.status(500).json({ error: "PDF conversion failed", details: error.message });
   }
 });
 
