@@ -9,6 +9,10 @@ node server.js //ON CD SRC
 ctrl+c to stop
 
 instale markitdown y pandoc
+
+PDF export (solo npm run dev, Docker lo instala automaticamente):
+  Windows: https://www.libreoffice.org/download/download-libreoffice/
+  Mac:     brew install --cask libreoffice
 ollama3.1
 
 ahora responde de esta forma que mas necesitamos hacer para que la entrega este lista para el jueves. Tengo disponible mañana y la próxima semana para terminarlo este fin no puedo apoyar.

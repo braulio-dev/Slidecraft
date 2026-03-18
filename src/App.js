@@ -7,7 +7,11 @@ import ChatMessage from './components/ChatMessage';
 import ChatInput from './components/ChatInput';
 import ModelSelector from './components/ModelSelector';
 import TemplateSelector from './components/TemplateSelector';
-import './App.css';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { Plus } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 // Main App Component with Authentication
 function MainApp() {
@@ -19,30 +23,11 @@ function MainApp() {
   const [selectedModel, setSelectedModel] = useState('qwen2.5:7b-instruct');
   const [availableModels, setAvailableModels] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState('blank_default.pptx');
-  const [showChatHistory, setShowChatHistory] = useState(false);
   const [slideTypes, setSlideTypes] = useState([]);
   const [currentMarkdown, setCurrentMarkdown] = useState(null);
   const messagesEndRef = useRef(null);
-  const chatHistoryRef = useRef(null);
 
   const currentChat = chats.find(c => c.id === currentChatId);
-
-  // Close chat history dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (chatHistoryRef.current && !chatHistoryRef.current.contains(event.target)) {
-        setShowChatHistory(false);
-      }
-    };
-
-    if (showChatHistory) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showChatHistory]);
 
   // --- Crear nuevo chat ---
   const createNewChat = useCallback(() => {
@@ -148,15 +133,42 @@ function MainApp() {
     localStorage.setItem("ollama_chats", JSON.stringify(chats));
   }, [chats]);
 
+  const PRESENTATION_START = '<<<PRESENTATION_START>>>';
+  const PRESENTATION_END = '<<<PRESENTATION_END>>>';
+
+  const extractPresentationTitle = (markdown) => {
+    const match = markdown?.match(/^#\s+(.+)$/m);
+    if (match) {
+      return match[1]
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .slice(0, 60) || `presentation-${Date.now()}`;
+    }
+    return `presentation-${Date.now()}`;
+  };
+
+  const extractPresentationMarkdown = (content) => {
+    const startIdx = content.indexOf(PRESENTATION_START);
+    const endIdx = content.indexOf(PRESENTATION_END);
+    if (startIdx === -1) return null;
+    const start = startIdx + PRESENTATION_START.length;
+    const end = endIdx === -1 ? content.length : endIdx;
+    return content.slice(start, end).trim();
+  };
+
   // --- Construir system prompt con slide types ---
   const buildSystemPrompt = (types) => {
     const baseRules = `You are a professional presentation assistant. Your job is to determine whether the user is asking you to CREATE a presentation, or simply asking a question or having a conversation.
 
 IF the user is asking to create a presentation (e.g. "make a presentation about X", "create slides on Y", "generate a deck for Z"):
-- Respond ONLY with the presentation in Markdown format using the slide types below
-- Always start with a TITLE SLIDE (# heading)
-- Keep bullet points short and direct
-- DO NOT include image markdown tags
+- First write a brief, natural summary (1-3 sentences) describing what the presentation covers and its key points. This goes BEFORE the delimiter.
+- Then output the full slides wrapped in these exact delimiters on their own lines:
+<<<PRESENTATION_START>>>
+[full presentation markdown here]
+<<<PRESENTATION_END>>>
+- Inside the delimiters, use the slide types below. Always start with a TITLE SLIDE (# heading). Keep bullet points short. DO NOT include image markdown tags.
 
 SLIDE TYPES for presentations:
 - TITLE SLIDE: Start with "# Title" on its own line, then a subtitle or short description on the next line. Use this for the FIRST slide only.
@@ -165,8 +177,8 @@ SLIDE TYPES for presentations:
 - CLOSING SLIDE: Use "# Conclusion" or "# Thank You" for the last slide, followed by a closing line.
 
 IF the user is asking a question, chatting, or asking for advice (NOT requesting a presentation):
-- Respond naturally as a helpful assistant in plain text
-- Do NOT generate slides or use # / ## headings`;
+- Respond naturally as a helpful assistant. You may use markdown freely (headings, bold, lists, code blocks, etc.)
+- Do NOT use the <<<PRESENTATION_START>>> delimiter`;
 
     if (!types || types.length === 0) return baseRules;
 
@@ -185,15 +197,19 @@ IF the user is asking a question, chatting, or asking for advice (NOT requesting
 ${markdown}
 ---
 
-The user will give you instructions to modify it. Return the COMPLETE updated markdown only — all slides, not just the changed ones. Follow the same slide type rules (# for title slide, ## for content slides). If the user asks for an entirely new presentation on a different topic, create a fresh one instead.`;
+The user will give you instructions to modify it. Follow this exact output format:
+1. Write a brief summary (1-3 sentences) describing what changed or what the updated presentation covers.
+2. Then output the COMPLETE updated markdown (all slides, not just the changed ones) wrapped in:
+<<<PRESENTATION_START>>>
+[full updated markdown here]
+<<<PRESENTATION_END>>>
+
+Follow the same slide type rules (# for title slide, ## for content slides). If the user asks for an entirely new presentation on a different topic, create a fresh one instead.`;
   };
 
   // --- Evaluar si la respuesta del modelo es una presentación ---
-  const isPresentationResponse = (markdown) => {
-    const lines = markdown.split('\n');
-    const hasH1 = lines.some(line => /^# [^#]/.test(line.trim()));
-    const hasH2 = lines.some(line => /^## /.test(line.trim()));
-    return hasH1 && hasH2;
+  const isPresentationResponse = (content) => {
+    return content.includes(PRESENTATION_START);
   };
 
   // --- Enviar mensaje ---
@@ -356,8 +372,9 @@ The user will give you instructions to modify it. Return the COMPLETE updated ma
         console.log("Response is not a presentation, skipping PPTX conversion.");
       } else {
         // --- Enviar Markdown al backend Pandoc ---
+        const presentationMarkdown = extractPresentationMarkdown(fullMarkdownResponse);
         console.log("Converting to PPTX...");
-        console.log("Markdown length:", fullMarkdownResponse.length);
+        console.log("Extracted markdown length:", presentationMarkdown?.length);
         console.log("Images count:", images.length);
         console.log("Selected template:", selectedTemplate);
 
@@ -368,7 +385,7 @@ The user will give you instructions to modify it. Return the COMPLETE updated ma
             ...getAuthHeaders()
           },
           body: JSON.stringify({
-            markdown: fullMarkdownResponse,
+            markdown: presentationMarkdown,
             images: images,
             template: selectedTemplate
           })
@@ -378,16 +395,30 @@ The user will give you instructions to modify it. Return the COMPLETE updated ma
 
         if (convertResponse.ok) {
           const blob = await convertResponse.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `presentation_${Date.now()}.pptx`;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          window.URL.revokeObjectURL(url);
-          setCurrentMarkdown(fullMarkdownResponse);
-          console.log("PPTX downloaded successfully");
+          const filename = `${extractPresentationTitle(presentationMarkdown)}.pptx`;
+          // Convert blob to base64 so it persists as a snapshot in the message
+          const base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+          // Attach the PPTX snapshot to the assistant message
+          setChats(prev =>
+            prev.map(c => {
+              if (c.id === currentChat.id) {
+                const messages = [...c.messages];
+                messages[messages.length - 1] = {
+                  ...messages[messages.length - 1],
+                  pptxBase64: base64,
+                  pptxFilename: filename,
+                };
+                return { ...c, messages };
+              }
+              return c;
+            })
+          );
+          setCurrentMarkdown(presentationMarkdown);
+          console.log("PPTX stored as attachment snapshot");
         } else {
           const errorText = await convertResponse.text();
           console.error("Convert API error:", convertResponse.status, errorText);
@@ -419,9 +450,8 @@ The user will give you instructions to modify it. Return the COMPLETE updated ma
   // Show loading spinner while checking authentication
   if (loading) {
     return (
-      <div className="auth-loading">
-        <div className="loading-spinner"></div>
-        <p>Loading...</p>
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 rounded-full border-4 border-border border-t-primary animate-spin" />
       </div>
     );
   }
@@ -432,100 +462,114 @@ The user will give you instructions to modify it. Return the COMPLETE updated ma
   }
 
   return (
-    <div className="app">
-      <div className="app-header">
-        <div className="header-content">
-          <div className="header-left">
-            <div className="chat-history-dropdown" ref={chatHistoryRef}>
-              <button
-                className="chat-history-button"
-                onClick={() => setShowChatHistory(!showChatHistory)}
-              >
-                <span className="chat-title">{currentChat?.title || "Slidecraft"}</span>
-                <span className="dropdown-arrow">{showChatHistory ? '▲' : '▼'}</span>
-              </button>
+    <div className="flex h-screen bg-background overflow-hidden">
 
-              {showChatHistory && (
-                <div className="chat-history-menu">
-                  <button onClick={() => { createNewChat(); setShowChatHistory(false); }} className="new-chat-item">
-                    <span>＋</span>
-                    <span>New Chat</span>
-                  </button>
-                  <div className="chat-history-divider"></div>
-                  <div className="chat-history-list">
-                    {chats.map(chat => (
-                      <div
-                        key={chat.id}
-                        className={`chat-history-item ${chat.id === currentChatId ? "active" : ""}`}
-                        onClick={() => { setCurrentChatId(chat.id); setShowChatHistory(false); }}
-                      >
-                        {chat.title}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+      {/* SIDEBAR */}
+      <aside className="flex flex-col w-60 shrink-0 bg-card border-r border-border">
+        <div className="flex items-center h-14 px-4 border-b border-border shrink-0">
+          <span className="text-base font-bold tracking-tight bg-gradient-to-r from-blue-400 to-blue-300 bg-clip-text text-transparent">Slidecraft</span>
+        </div>
+        <div className="px-3 pt-3 pb-2 shrink-0">
+          <Button
+            onClick={createNewChat}
+            variant="outline"
+            className="w-full justify-start gap-2 border-border bg-secondary hover:bg-accent text-sm font-medium"
+          >
+            <Plus className="h-4 w-4" /> New Chat
+          </Button>
+        </div>
+        <Separator className="bg-border mx-3 w-auto" />
+        <ScrollArea className="flex-1 px-2 py-2">
+          {chats.map(chat => (
+            <button
+              key={chat.id}
+              onClick={() => setCurrentChatId(chat.id)}
+              className={cn(
+                "w-full text-left px-3 py-2 rounded-lg text-sm truncate transition-colors border-l-2",
+                chat.id === currentChatId
+                  ? "bg-primary/10 text-foreground font-medium border-l-primary"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground border-l-transparent"
               )}
-            </div>
-          </div>
-          <div className="header-controls">
-            <ModelSelector
-              models={availableModels}
-              selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
-            />
-            <button onClick={clearChat} className="clear-button">
-              Clear Chat
+            >
+              {chat.title}
             </button>
+          ))}
+        </ScrollArea>
+        <Separator className="bg-border mx-3 w-auto" />
+        <div className="px-3 py-3 shrink-0">
+          <ModelSelector
+            models={availableModels}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+          />
+        </div>
+      </aside>
+
+      {/* MAIN */}
+      <div className="flex flex-col flex-1 min-w-0">
+        <header className="flex items-center justify-between h-14 px-6 bg-card border-b border-border shrink-0">
+          <span className="text-sm font-semibold text-foreground">{currentChat?.title || 'Slidecraft'}</span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearChat}
+              className="text-muted-foreground hover:text-foreground text-sm"
+            >
+              Clear
+            </Button>
             <UserMenu onOpenAdmin={() => setShowAdminPanel(true)} />
           </div>
-        </div>
-      </div>
+        </header>
 
-      <div className="chat-main">
-
-        <div className="chat-container">
-          <div className="messages-container">
-            {(!currentChat || currentChat.messages.length === 0) && (
-              <div className="welcome-message">
-                <h2>Welcome to Ollama Chat</h2>
-                <p>Start a conversation with your AI assistant</p>
+        <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-6">
+          {(!currentChat || currentChat.messages.length === 0) && (
+            <div className="m-auto text-center max-w-md py-12 select-none">
+              <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20 mb-5 shadow-[0_0_24px_hsl(217_91%_60%/0.15)]">
+                <svg className="h-7 w-7 text-primary" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                  <rect x="2" y="5" width="20" height="14" rx="2" />
+                  <path d="M8 9h8M8 13h5" strokeLinecap="round" />
+                </svg>
               </div>
-            )}
-            {currentChat?.messages.map((msg, i) => (
-              <ChatMessage key={i} message={msg} />
-            ))}
-            {isLoading && (
-              <ChatMessage message={{
-                role: 'assistant',
-                content: 'Thinking...',
-                timestamp: new Date(),
-                isLoading: true
-              }} />
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <div className="input-area">
-            {currentMarkdown && (
-              <div className="editing-banner">
-                <span>Editing active presentation</span>
-                <button className="new-presentation-button" onClick={() => setCurrentMarkdown(null)}>
-                  New Presentation
-                </button>
-              </div>
-            )}
-            <TemplateSelector
-              selectedTemplate={selectedTemplate}
-              onTemplateChange={setSelectedTemplate}
+              <h2 className="text-2xl font-semibold text-foreground mb-2">Welcome to Slidecraft</h2>
+              <p className="text-muted-foreground">Describe your presentation and let AI build it for you</p>
+            </div>
+          )}
+          {currentChat?.messages.map((msg, i) => (
+            <ChatMessage
+              key={i}
+              message={msg}
+              isStreaming={isLoading && i === currentChat.messages.length - 1 && msg.role === 'assistant'}
             />
+          ))}
+          {isLoading && currentChat?.messages.at(-1)?.role !== 'assistant' && (
+            <ChatMessage message={{ role: 'assistant', content: '', timestamp: new Date(), isLoading: true }} />
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div className="px-6 pb-5 pt-3 bg-background border-t border-border shrink-0">
+          {currentMarkdown && (
+            <div className="flex items-center justify-between bg-primary/10 border border-primary/30 rounded-lg px-3 py-1.5 mb-2 text-sm text-primary/80">
+              <span>Editing active presentation</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setCurrentMarkdown(null)}
+                className="h-6 px-2 text-xs text-primary/80 border border-primary/40 hover:bg-primary/20"
+              >
+                New Presentation
+              </Button>
+            </div>
+          )}
+          <div className="flex items-end gap-2">
+            <TemplateSelector selectedTemplate={selectedTemplate} onTemplateChange={setSelectedTemplate} />
             <ChatInput onSendMessage={sendMessage} disabled={isLoading} />
           </div>
         </div>
       </div>
 
-      {showAdminPanel && (
-        <AdminPanel onClose={() => setShowAdminPanel(false)} />
-      )}
+      <AdminPanel open={showAdminPanel} onClose={() => setShowAdminPanel(false)} />
     </div>
   );
 }

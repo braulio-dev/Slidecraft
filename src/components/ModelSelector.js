@@ -1,24 +1,28 @@
 import React from 'react';
-import './ModelSelector.css';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 function ModelSelector({ models, selectedModel, onModelChange }) {
   return (
-    <div className="model-selector">
-      <label htmlFor="model-select" className="model-label">
-        Model:
-      </label>
-      <select
-        id="model-select"
-        value={selectedModel}
-        onChange={(e) => onModelChange(e.target.value)}
-        className="model-select"
-      >
-        {models.map((model) => (
-          <option key={model} value={model}>
-            {model}
-          </option>
-        ))}
-      </select>
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs text-muted-foreground font-medium">Model</span>
+      <Select value={selectedModel} onValueChange={onModelChange}>
+        <SelectTrigger className="w-full bg-secondary border-border text-sm">
+          <SelectValue placeholder="Select model" />
+        </SelectTrigger>
+        <SelectContent>
+          {models.map((model) => (
+            <SelectItem key={model} value={model}>
+              {model}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

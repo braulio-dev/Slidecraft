@@ -1,63 +1,65 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import './UserMenu.css';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { ChevronDown, LogOut, Shield } from 'lucide-react';
 
 const UserMenu = ({ onOpenAdmin }) => {
   const { user, logout, isAdmin } = useAuth();
-  const [isOpen, setIsOpen] = useState(false);
 
   const handleLogout = () => {
-    setIsOpen(false);
     logout();
   };
 
   const handleAdminClick = () => {
-    setIsOpen(false);
     onOpenAdmin();
   };
 
+  const initials = user?.username?.charAt(0).toUpperCase() || '?';
+
   return (
-    <div className="user-menu">
-      <button
-        className="user-menu-button"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <span className="user-icon">
-          {user?.username?.charAt(0).toUpperCase()}
-        </span>
-        <span className="user-name">{user?.username}</span>
-        <span className="dropdown-arrow">{isOpen ? '▲' : '▼'}</span>
-      </button>
-
-      {isOpen && (
-        <div className="user-menu-dropdown">
-          <div className="user-menu-header">
-            <div className="user-menu-username">{user?.username}</div>
-            <div className="user-menu-role">
-              {user?.role === 'admin' ? 'Administrator' : 'Employee'}
-            </div>
-          </div>
-
-          <div className="user-menu-divider"></div>
-
-          {isAdmin() && (
-            <button
-              className="user-menu-item"
-              onClick={handleAdminClick}
-            >
-              <span>Admin Panel</span>
-            </button>
-          )}
-
-          <button
-            className="user-menu-item logout"
-            onClick={handleLogout}
-          >
-            <span>Logout</span>
-          </button>
-        </div>
-      )}
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+          <Avatar className="h-7 w-7">
+            <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <span className="max-w-[100px] truncate font-medium">{user?.username}</span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48 bg-card border-border">
+        <DropdownMenuLabel className="font-normal">
+          <p className="text-sm font-semibold text-foreground">{user?.username}</p>
+          <p className="text-xs text-muted-foreground">
+            {user?.role === 'admin' ? 'Administrator' : 'Employee'}
+          </p>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator className="bg-border" />
+        {isAdmin() && (
+          <DropdownMenuItem onClick={handleAdminClick} className="gap-2 cursor-pointer">
+            <Shield className="h-4 w-4" />
+            Admin Panel
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem
+          onClick={handleLogout}
+          className="gap-2 cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+        >
+          <LogOut className="h-4 w-4" />
+          Logout
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
 

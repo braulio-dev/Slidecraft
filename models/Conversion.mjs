@@ -32,11 +32,11 @@ const conversionSchema = new mongoose.Schema({
     template: String
   },
   slides: [
-    {
+    new mongoose.Schema({
       slideNumber: Number,
-      type: String,
+      slideType: String,
       title: String
-    }
+    }, { _id: false })
   ]
 });
 

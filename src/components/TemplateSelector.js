@@ -1,9 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import './TemplateSelector.css';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { LayoutTemplate, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 function TemplateSelector({ selectedTemplate, onTemplateChange }) {
   const [templates, setTemplates] = useState([]);
-  const [isOpen, setIsOpen] = useState(false);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     fetchTemplates();
@@ -19,11 +28,6 @@ function TemplateSelector({ selectedTemplate, onTemplateChange }) {
     }
   };
 
-  const handleTemplateSelect = (template) => {
-    onTemplateChange(template);
-    setIsOpen(false);
-  };
-
   const getTemplateName = (filename) => {
     return filename
       .replace('.pptx', '')
@@ -31,63 +35,76 @@ function TemplateSelector({ selectedTemplate, onTemplateChange }) {
       .replace(/\b\w/g, l => l.toUpperCase());
   };
 
-  return (
-    <div className="template-selector">
-      <button 
-        className="template-button"
-        onClick={() => setIsOpen(!isOpen)}
-        title="Seleccionar plantilla"
-      >
-        {selectedTemplate ? getTemplateName(selectedTemplate) : 'Plantilla'}
-      </button>
+  const handleSelect = (filename) => {
+    onTemplateChange(filename);
+    setOpen(false);
+  };
 
-      {isOpen && (
-        <div className="template-dropdown">
-          <div className="template-dropdown-header">
-            <h3>Selecciona una plantilla</h3>
-            <button 
-              className="close-button"
-              onClick={() => setIsOpen(false)}
-            >
-              ✕
-            </button>
-          </div>
-          <div className="template-grid">
-            {templates.map((template) => (
-              <div
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0 gap-2 border-border bg-secondary hover:bg-accent text-muted-foreground hover:text-foreground"
+        >
+          <LayoutTemplate className="h-4 w-4" />
+          <span className="hidden sm:inline">{selectedTemplate ? getTemplateName(selectedTemplate) : 'Template'}</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl bg-card border-border">
+        <DialogHeader>
+          <DialogTitle>Select a Template</DialogTitle>
+        </DialogHeader>
+        <div className="grid grid-cols-3 gap-3 mt-2">
+          {templates.map((template) => {
+            const isSelected = selectedTemplate === template.filename;
+            return (
+              <button
                 key={template.filename}
-                className={`template-card ${selectedTemplate === template.filename ? 'selected' : ''}`}
-                onClick={() => handleTemplateSelect(template.filename)}
+                onClick={() => handleSelect(template.filename)}
+                className={cn(
+                  'relative flex flex-col rounded-lg border p-1 text-left transition-all hover:bg-accent',
+                  isSelected
+                    ? 'border-primary bg-primary/10 shadow-[0_4px_12px_hsl(var(--primary)/0.25)]'
+                    : 'border-border'
+                )}
               >
-                <div className="template-preview" style={{ backgroundColor: template.color || '#2a2b32' }}>
+                <div
+                  className="aspect-video w-full rounded overflow-hidden flex items-center justify-center text-4xl"
+                  style={{ backgroundColor: template.color || 'hsl(var(--secondary))' }}
+                >
                   {template.thumbnail ? (
-                    <img 
-                      src={`http://localhost:4000${template.thumbnail}`} 
+                    <img
+                      src={`http://localhost:4000${template.thumbnail}`}
                       alt={template.filename}
+                      className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="template-placeholder" style={{ fontSize: '64px' }}>
-                      {template.icon || '📄'}
-                    </div>
+                    <span>{template.icon || '📄'}</span>
                   )}
                 </div>
-                <div className="template-name">
-                  {getTemplateName(template.filename)}
+                <div className="px-1 py-1.5">
+                  <p className="text-xs font-medium text-foreground truncate">
+                    {getTemplateName(template.filename)}
+                  </p>
+                  {template.description && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">
+                      {template.description}
+                    </p>
+                  )}
                 </div>
-                {template.description && (
-                  <div className="template-description">
-                    {template.description}
-                  </div>
+                {isSelected && (
+                  <span className="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                    <Check className="h-3 w-3" />
+                  </span>
                 )}
-                {selectedTemplate === template.filename && (
-                  <div className="selected-badge">✓</div>
-                )}
-              </div>
-            ))}
-          </div>
+              </button>
+            );
+          })}
         </div>
-      )}
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
