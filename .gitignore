@@ -2,3 +2,5 @@ node_modules
 uploads/
 temp*.md
 CLAUDE.md
+dist/
+.claude/settings.local.json

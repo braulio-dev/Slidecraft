@@ -19,42 +19,29 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^8.0.7",
-    "react-scripts": "^4.0.3",
     "react-syntax-highlighter": "^15.5.0",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.469.0",
+    "tailwind-merge": "^2.6.0",
+    "@radix-ui/react-slot": "^1.1.1"
   },
   "scripts": {
-    "start": "cross-env GENERATE_SOURCEMAP=false NODE_OPTIONS=--openssl-legacy-provider react-scripts start",
-    "server": "node src/server.js",
-    "dev": "concurrently \"npm run server\" \"npm run start\"",
-    "build": "cross-env NODE_OPTIONS=--openssl-legacy-provider react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
+    "start": "vite",
     "server": "node src/server.mjs",
+    "dev": "concurrently \"npm run server\" \"npm run start\"",
+    "build": "vite build",
+    "preview": "vite preview",
     "create-admin": "node scripts/createAdmin.mjs"
   },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
-  },
-  "proxy": "http://localhost:11434",
   "devDependencies": {
     "concurrently": "^9.2.1",
-    "cross-env": "^10.0.0",
-    "http-proxy-middleware": "^3.0.5"
+    "vite": "^6.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^3.4.17",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss-animate": "^1.0.7"
   }
 }
