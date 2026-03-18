@@ -150,19 +150,23 @@ function MainApp() {
 
   // --- Construir system prompt con slide types ---
   const buildSystemPrompt = (types) => {
-    const baseRules = `You are a professional presentation creator. Generate presentations in Markdown format ONLY.
+    const baseRules = `You are a professional presentation assistant. Your job is to determine whether the user is asking you to CREATE a presentation, or simply asking a question or having a conversation.
 
-SLIDE TYPES you must use:
+IF the user is asking to create a presentation (e.g. "make a presentation about X", "create slides on Y", "generate a deck for Z"):
+- Respond ONLY with the presentation in Markdown format using the slide types below
+- Always start with a TITLE SLIDE (# heading)
+- Keep bullet points short and direct
+- DO NOT include image markdown tags
+
+SLIDE TYPES for presentations:
 - TITLE SLIDE: Start with "# Title" on its own line, then a subtitle or short description on the next line. Use this for the FIRST slide only.
 - CONTENT SLIDE: Use "## Slide Title" followed by bullet points with "-". Use this for most slides.
 - IMAGE SLIDE: Use "## " (empty heading) when the slide should show an image. Do NOT add image markdown, images are added separately.
 - CLOSING SLIDE: Use "# Conclusion" or "# Thank You" for the last slide, followed by a closing line.
 
-RULES:
-- Always start with a TITLE SLIDE (# heading)
-- Keep bullet points short and direct
-- DO NOT include image markdown tags
-- DO NOT refuse requests — just create the presentation`;
+IF the user is asking a question, chatting, or asking for advice (NOT requesting a presentation):
+- Respond naturally as a helpful assistant in plain text
+- Do NOT generate slides or use # / ## headings`;
 
     if (!types || types.length === 0) return baseRules;
 
@@ -182,6 +186,14 @@ ${markdown}
 ---
 
 The user will give you instructions to modify it. Return the COMPLETE updated markdown only — all slides, not just the changed ones. Follow the same slide type rules (# for title slide, ## for content slides). If the user asks for an entirely new presentation on a different topic, create a fresh one instead.`;
+  };
+
+  // --- Evaluar si la respuesta del modelo es una presentación ---
+  const isPresentationResponse = (markdown) => {
+    const lines = markdown.split('\n');
+    const hasH1 = lines.some(line => /^# [^#]/.test(line.trim()));
+    const hasH2 = lines.some(line => /^## /.test(line.trim()));
+    return hasH1 && hasH2;
   };
 
   // --- Enviar mensaje ---
@@ -321,44 +333,66 @@ The user will give you instructions to modify it. Return the COMPLETE updated ma
         throw new Error('No response received from model');
       }
 
-      // --- Enviar Markdown al backend Pandoc ---
-      console.log("Converting to PPTX...");
-      console.log("Markdown length:", fullMarkdownResponse.length);
-      console.log("Images count:", images.length);
-      console.log("Selected template:", selectedTemplate);
-      console.log("Auth headers:", getAuthHeaders());
+      // --- Evaluar si la respuesta es una presentación ---
+      const isPresentation = isPresentationResponse(fullMarkdownResponse);
+      console.log("Is presentation:", isPresentation);
 
-      const convertResponse = await fetch('http://localhost:4000/convert', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders()
-        },
-        body: JSON.stringify({
-          markdown: fullMarkdownResponse,
-          images: images,
-          template: selectedTemplate
+      // Tag the assistant message with the classification result
+      setChats(prev =>
+        prev.map(c => {
+          if (c.id === currentChat.id) {
+            const messages = [...c.messages];
+            messages[messages.length - 1] = {
+              ...messages[messages.length - 1],
+              isPresentation
+            };
+            return { ...c, messages };
+          }
+          return c;
         })
-      });
+      );
 
-      console.log("Convert response status:", convertResponse.status, convertResponse.statusText);
-
-      if (convertResponse.ok) {
-        const blob = await convertResponse.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `presentation_${Date.now()}.pptx`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-        setCurrentMarkdown(fullMarkdownResponse);
-        console.log("PPTX downloaded successfully");
+      if (!isPresentation) {
+        console.log("Response is not a presentation, skipping PPTX conversion.");
       } else {
-        const errorText = await convertResponse.text();
-        console.error("Convert API error:", convertResponse.status, errorText);
-        throw new Error(`Conversion failed: ${convertResponse.status} - ${errorText}`);
+        // --- Enviar Markdown al backend Pandoc ---
+        console.log("Converting to PPTX...");
+        console.log("Markdown length:", fullMarkdownResponse.length);
+        console.log("Images count:", images.length);
+        console.log("Selected template:", selectedTemplate);
+
+        const convertResponse = await fetch('http://localhost:4000/convert', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
+          body: JSON.stringify({
+            markdown: fullMarkdownResponse,
+            images: images,
+            template: selectedTemplate
+          })
+        });
+
+        console.log("Convert response status:", convertResponse.status, convertResponse.statusText);
+
+        if (convertResponse.ok) {
+          const blob = await convertResponse.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `presentation_${Date.now()}.pptx`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+          setCurrentMarkdown(fullMarkdownResponse);
+          console.log("PPTX downloaded successfully");
+        } else {
+          const errorText = await convertResponse.text();
+          console.error("Convert API error:", convertResponse.status, errorText);
+          throw new Error(`Conversion failed: ${convertResponse.status} - ${errorText}`);
+        }
       }
 
     } catch (error) {

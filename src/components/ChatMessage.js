@@ -47,6 +47,11 @@ function ChatMessage({ message }) {
           <span className="message-role">
             {message.role === 'user' ? 'You' : 'Assistant'}
           </span>
+          {message.role === 'assistant' && message.isPresentation !== undefined && (
+            <span className={`response-type-badge ${message.isPresentation ? 'badge-presentation' : 'badge-chat'}`}>
+              {message.isPresentation ? 'Presentation' : 'Chat Response'}
+            </span>
+          )}
           <span className="message-time">
             {formatTime(message.timestamp)}
           </span>
