@@ -51,10 +51,10 @@ export async function convertMarkdownToPPTX(markdownText, outputFile, templatePa
     let command;
     if (templatePath) {
       console.log("🎨 Using template:", templatePath);
-      command = `"${pandocPath}" "${tempFile}" -o "${outputFile}" --from markdown --to pptx --reference-doc="${templatePath}"`;
+      command = `"${pandocPath}" "${tempFile}" -o "${outputFile}" --from markdown --to pptx --slide-level=2 --reference-doc="${templatePath}"`;
     } else {
       console.log("📋 Using default Pandoc template");
-      command = `"${pandocPath}" "${tempFile}" -o "${outputFile}" --from markdown --to pptx`;
+      command = `"${pandocPath}" "${tempFile}" -o "${outputFile}" --from markdown --to pptx --slide-level=2`;
     }
 
     console.log("🔄 Running command:", command);

@@ -11,38 +11,59 @@ import { useAuth } from '../context/AuthContext';
 const PRESENTATION_START = '<<<PRESENTATION_START>>>';
 const PRESENTATION_END = '<<<PRESENTATION_END>>>';
 
-function PresentationCard({ base64, filename }) {
+function PresentationCard({ base64, filename, conversionId }) {
   const { getAuthHeaders } = useAuth();
   const [pdfLoading, setPdfLoading] = useState(false);
 
   const displayName = filename ? filename.replace(/\.[^.]+$/, '') : 'presentation';
 
-  const handleDownloadPPTX = () => {
-    const a = document.createElement('a');
-    a.href = base64;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+  const fetchPptxBlob = async () => {
+    if (base64) {
+      // Legacy in-memory base64: convert back to blob
+      const res = await fetch(base64);
+      return res.blob();
+    }
+    const res = await fetch(`http://localhost:4000/download/${conversionId}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch presentation from server');
+    return res.blob();
+  };
+
+  const handleDownloadPPTX = async () => {
+    try {
+      const blob = await fetchPptxBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Download failed: ' + err.message);
+    }
   };
 
   const handleDownloadPDF = async () => {
     setPdfLoading(true);
     try {
+      const blob = await fetchPptxBlob();
+      const pptxBase64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
       const response = await fetch('http://localhost:4000/convert-to-pdf', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
-        body: JSON.stringify({ pptxBase64: base64, filename }),
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ pptxBase64, filename }),
       });
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         throw new Error(err.details || 'PDF conversion failed');
       }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+      const pdfBlob = await response.blob();
+      const url = URL.createObjectURL(pdfBlob);
       const a = document.createElement('a');
       a.href = url;
       a.download = filename.replace(/\.pptx$/i, '.pdf');
@@ -58,7 +79,7 @@ function PresentationCard({ base64, filename }) {
   };
 
   return (
-    <Card className="mt-3 border border-primary/30 bg-primary/5 w-full max-w-sm">
+    <Card className="mt-3 border-primary/20 bg-primary/5 shadow-none w-full max-w-sm">
       <CardContent className="flex items-center gap-3 py-3 px-4">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 border border-primary/25">
           <Presentation className="h-4 w-4 text-primary" />
@@ -73,14 +94,14 @@ function PresentationCard({ base64, filename }) {
               size="sm"
               variant="outline"
               disabled={pdfLoading}
-              className="shrink-0 h-8 gap-1 border-primary/40 text-primary hover:bg-primary/10 text-xs"
+              className="shrink-0 h-8 gap-1 border-primary/40 text-primary hover:bg-primary/10 text-xs focus-visible:ring-0 focus-visible:ring-offset-0"
             >
               <Download className="h-3.5 w-3.5" />
               {pdfLoading ? 'Converting…' : 'Download'}
               <ChevronDown className="h-3 w-3" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="shadow-sm border-border/50">
             <DropdownMenuItem onClick={handleDownloadPPTX}>
               <Download className="h-3.5 w-3.5 mr-2" />
               PowerPoint (.pptx)
@@ -96,7 +117,7 @@ function PresentationCard({ base64, filename }) {
   );
 }
 
-function PresentationMessage({ content, pptxBase64, pptxFilename, isStreaming }) {
+function PresentationMessage({ content, pptxBase64, pptxFilename, conversionId, isStreaming }) {
   const startIdx = content.indexOf(PRESENTATION_START);
   const endIdx = content.indexOf(PRESENTATION_END);
 
@@ -104,6 +125,7 @@ function PresentationMessage({ content, pptxBase64, pptxFilename, isStreaming })
   const summary = startIdx !== -1 ? content.slice(0, startIdx).trim() : content;
   const presentationStreaming = startIdx !== -1 && endIdx === -1; // delimiters open but not closed
   const presentationDone = endIdx !== -1;
+  const hasFile = pptxBase64 || conversionId;
 
   return (
     <div className="flex flex-col gap-2">
@@ -112,7 +134,7 @@ function PresentationMessage({ content, pptxBase64, pptxFilename, isStreaming })
           <ReactMarkdown>{summary}</ReactMarkdown>
         </div>
       )}
-      {(presentationStreaming || presentationDone) && !pptxBase64 && (
+      {(presentationStreaming || presentationDone) && !hasFile && (
         <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
           <span className="flex gap-[3px] items-center">
             <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
@@ -122,8 +144,8 @@ function PresentationMessage({ content, pptxBase64, pptxFilename, isStreaming })
           Generating presentation…
         </div>
       )}
-      {pptxBase64 && (
-        <PresentationCard base64={pptxBase64} filename={pptxFilename} />
+      {hasFile && (
+        <PresentationCard base64={pptxBase64} filename={pptxFilename} conversionId={conversionId} />
       )}
     </div>
   );
@@ -198,6 +220,7 @@ function ChatMessage({ message, isStreaming }) {
                 content={message.content}
                 pptxBase64={message.pptxBase64}
                 pptxFilename={message.pptxFilename}
+                conversionId={message.conversionId}
                 isStreaming={isStreaming}
               />
             ) : (

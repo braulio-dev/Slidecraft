@@ -18,6 +18,7 @@ import SlideType from "../models/SlideType.mjs";
 // Import routes
 import authRoutes from "../routes/auth.mjs";
 import adminRoutes from "../routes/admin.mjs";
+import chatRoutes from "../routes/chats.mjs";
 
 // Import middleware
 import { authenticateToken } from "../middleware/auth.mjs";
@@ -33,7 +34,7 @@ const __dirname = path.dirname(__filename);
 connectDB();
 
 // --- Middlewares ---
-app.use(cors());
+app.use(cors({ exposedHeaders: ['X-Conversion-Id', 'X-Conversion-Filename'] }));
 app.use(express.json({ limit: "10mb" }));
 
 // Servir archivos estáticos (miniaturas)
@@ -42,6 +43,7 @@ app.use('/thumbnails', express.static(path.resolve(__dirname, '../public/thumbna
 // --- Authentication Routes ---
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/chats", chatRoutes);
 
 // Endpoint para listar plantillas disponibles
 app.get("/api/templates", (req, res) => {
@@ -251,11 +253,8 @@ app.post("/convert", authenticateToken, async (req, res) => {
     await conversion.save();
     console.log("💾 Saved conversion record to MongoDB");
 
-    // --- Enviar el archivo al cliente ---
-    res.download(outputFile, filename, (err) => {
-      if (err) console.error("Error sending file:", err);
-      // Keep file on disk for user history - don't delete
-    });
+    // Return conversionId; client downloads on-demand via GET /download/:conversionId
+    res.json({ conversionId: conversion._id.toString(), filename });
   } catch (error) {
     console.error("❌ Error converting markdown to PPTX:", error);
     console.error("❌ Error stack:", error.stack);
@@ -354,6 +353,19 @@ app.get("/conversion/:id", authenticateToken, async (req, res) => {
   } catch (error) {
     console.error("❌ Error fetching conversion:", error);
     res.status(500).send("Error fetching conversion details");
+  }
+});
+
+// --- Endpoint: re-download a previously generated PPTX by conversionId ---
+app.get("/download/:conversionId", authenticateToken, async (req, res) => {
+  try {
+    const conversion = await Conversion.findOne({ _id: req.params.conversionId, userId: req.user._id });
+    if (!conversion) return res.status(404).json({ error: 'Conversion not found' });
+    if (!fs.existsSync(conversion.filePath)) return res.status(404).json({ error: 'File not found on server' });
+    res.download(conversion.filePath, conversion.filename);
+  } catch (error) {
+    console.error("❌ Error downloading conversion:", error);
+    res.status(500).json({ error: 'Failed to download file' });
   }
 });
 

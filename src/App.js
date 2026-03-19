@@ -8,10 +8,24 @@ import ChatInput from './components/ChatInput';
 import ModelSelector from './components/ModelSelector';
 import TemplateSelector from './components/TemplateSelector';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Plus } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Plus, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+// Normalize a message from DB shape to frontend shape
+function normalizeMessage(m) {
+  return {
+    role: m.role,
+    content: m.content,
+    timestamp: new Date(m.timestamp),
+    images: m.images ?? [],
+    isPresentation: m.isPresentation ?? false,
+    conversionId: m.conversionId ?? null,
+    pptxFilename: m.pptxFilename ?? null,
+    pptxBase64: null
+  };
+}
 
 // Main App Component with Authentication
 function MainApp() {
@@ -24,22 +38,63 @@ function MainApp() {
   const [availableModels, setAvailableModels] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState('blank_default.pptx');
   const [slideTypes, setSlideTypes] = useState([]);
-  const [currentMarkdown, setCurrentMarkdown] = useState(null);
+  const [hoveredChatId, setHoveredChatId] = useState(null);
   const messagesEndRef = useRef(null);
+  // Refs for reading latest values inside async callbacks without stale closures
+  const currentChatIdRef = useRef(currentChatId);
+  const chatsRef = useRef(chats);
+  useEffect(() => { currentChatIdRef.current = currentChatId; }, [currentChatId]);
+  useEffect(() => { chatsRef.current = chats; }, [chats]);
 
   const currentChat = chats.find(c => c.id === currentChatId);
+  const currentMarkdown = currentChat?.markdown ?? null;
+
+  // Authenticated fetch helper — stable as long as getAuthHeaders is stable
+  const apiFetch = useCallback((path, opts = {}) =>
+    fetch(`http://localhost:4000${path}`, {
+      ...opts,
+      headers: { ...getAuthHeaders(), ...(opts.headers || {}) }
+    }), [getAuthHeaders]);
 
   // --- Crear nuevo chat ---
+  // Just clears selection — the actual DB record is created on first message send
   const createNewChat = useCallback(() => {
-    const newChat = {
-      id: Date.now(),
-      title: `Chat ${chats.length + 1}`,
-      messages: []
-    };
-    setChats(prev => [newChat, ...prev]);
-    setCurrentChatId(newChat.id);
-    setCurrentMarkdown(null);
-  }, [chats.length]);
+    setCurrentChatId(null);
+  }, []);
+
+  // --- Eliminar chat ---
+  const deleteChat = useCallback(async (chatId) => {
+    setChats(prev => prev.filter(c => c.id !== chatId));
+    if (currentChatId === chatId) {
+      setCurrentChatId(null);
+    }
+    if (!chatId.startsWith('local_')) {
+      try {
+        await apiFetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+      } catch (err) {
+        console.warn('Failed to delete chat from DB:', err);
+      }
+    }
+  }, [apiFetch, currentChatId]);
+
+  // --- Renombrar chat ---
+  const renameChat = useCallback(async (chatId, currentTitle) => {
+    const newTitle = window.prompt('Rename chat:', currentTitle);
+    if (!newTitle || newTitle.trim() === currentTitle) return;
+    const trimmed = newTitle.trim().slice(0, 60);
+    setChats(prev => prev.map(c => c.id === chatId ? { ...c, title: trimmed } : c));
+    if (!chatId.startsWith('local_')) {
+      try {
+        await apiFetch(`/api/chats/${chatId}/title`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: trimmed })
+        });
+      } catch (err) {
+        console.warn('Failed to rename chat:', err);
+      }
+    }
+  }, [apiFetch]);
 
   // --- Scroll automático ---
   const scrollToBottom = () => {
@@ -77,61 +132,52 @@ function MainApp() {
     }
   };
 
-  // --- Cargar historial del usuario desde MongoDB ---
+  // --- Load chat list from DB on login ---
   useEffect(() => {
-    async function loadUserHistory() {
+    if (!isAuthenticated) return;
+    async function loadChats() {
       try {
-        const res = await fetch("http://localhost:4000/history", {
-          headers: getAuthHeaders()
-        });
+        const res = await apiFetch('/api/chats');
         const data = await res.json();
-
-        if (data.conversions && data.conversions.length > 0) {
-          const formattedChats = data.conversions.map((c, index) => ({
-            id: c._id,
-            title: `Presentation ${data.conversions.length - index}`,
-            messages: [
-              { role: 'system', content: `Created: ${new Date(c.timestamp).toLocaleString()}`, timestamp: new Date(c.timestamp) },
-              { role: 'assistant', content: `Slide Count: ${c.metadata?.slideCount || 'N/A'}\nCharacters: ${c.metadata?.characterCount || 'N/A'}`, timestamp: new Date(c.timestamp) }
-            ]
-          }));
-
-          // Create a new empty chat for the user to start a conversation
-          const newChat = {
-            id: Date.now(),
-            title: `New Chat`,
-            messages: []
-          };
-
-          setChats([newChat, ...formattedChats]);
-          setCurrentChatId(newChat.id);
-          console.log("✅ Loaded user history from MongoDB and created new chat");
+        if (data.chats && data.chats.length > 0) {
+          // messages: null signals "not yet fetched" (lazy-loaded on switch)
+          const mapped = data.chats.map(c => ({ id: c._id, title: c.title, messages: null, updatedAt: c.updatedAt }));
+          setChats(mapped);
+          // Start with no chat selected — user lands in empty new-message state
+          setCurrentChatId(null);
           return;
         }
       } catch (err) {
-        console.warn("⚠️ Failed to load history:", err);
+        console.warn('Failed to load chats:', err);
       }
-
-      // Si falla o está vacío, cargar localStorage o crear uno nuevo
-      const saved = localStorage.getItem("ollama_chats");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setChats(parsed);
-        if (parsed.length > 0) setCurrentChatId(parsed[0].id);
-      } else {
-        createNewChat();
-      }
+      // No chats yet — stay in empty state
     }
+    loadChats();
+  }, [isAuthenticated, apiFetch]);
 
-    if (isAuthenticated) {
-      loadUserHistory();
-    }
-  }, [isAuthenticated, createNewChat, getAuthHeaders]);
-
-  // --- Guardar chats en localStorage también ---
+  // --- Lazy-load messages when switching to a chat that hasn't been fetched yet ---
   useEffect(() => {
-    localStorage.setItem("ollama_chats", JSON.stringify(chats));
-  }, [chats]);
+    if (!currentChatId) return;
+    const chat = chatsRef.current.find(c => c.id === currentChatId);
+    if (!chat || chat.messages !== null) return; // already loaded or local chat
+    async function loadMessages() {
+      try {
+        const res = await apiFetch(`/api/chats/${currentChatId}`);
+        const data = await res.json();
+        if (data.chat) {
+          setChats(prev => prev.map(c =>
+            c.id === currentChatId
+              ? { ...c, messages: data.chat.messages.map(normalizeMessage) }
+              : c
+          ));
+        }
+      } catch (err) {
+        console.warn('Failed to load messages:', err);
+        setChats(prev => prev.map(c => c.id === currentChatId ? { ...c, messages: [] } : c));
+      }
+    }
+    loadMessages();
+  }, [currentChatId, apiFetch]);
 
   const PRESENTATION_START = '<<<PRESENTATION_START>>>';
   const PRESENTATION_END = '<<<PRESENTATION_END>>>';
@@ -170,11 +216,33 @@ IF the user is asking to create a presentation (e.g. "make a presentation about 
 <<<PRESENTATION_END>>>
 - Inside the delimiters, use the slide types below. Always start with a TITLE SLIDE (# heading). Keep bullet points short. DO NOT include image markdown tags.
 
+CRITICAL SLIDE RULES:
+- Each "##" heading starts a NEW slide. Use a separate "##" for EVERY slide in the presentation.
+- Limit each content slide to 4-6 bullet points maximum. If you have more content, split it into multiple slides.
+- A typical presentation should have 5-10 slides. Do NOT cram everything into one slide.
+- Never put content directly under the "# Title" heading except the subtitle line.
+
 SLIDE TYPES for presentations:
-- TITLE SLIDE: Start with "# Title" on its own line, then a subtitle or short description on the next line. Use this for the FIRST slide only.
-- CONTENT SLIDE: Use "## Slide Title" followed by bullet points with "-". Use this for most slides.
-- IMAGE SLIDE: Use "## " (empty heading) when the slide should show an image. Do NOT add image markdown, images are added separately.
-- CLOSING SLIDE: Use "# Conclusion" or "# Thank You" for the last slide, followed by a closing line.
+- TITLE SLIDE: "# Title" on its own line, then ONE subtitle line. First slide only. No bullet points.
+- CONTENT SLIDE: "## Slide Title" on its own line, followed by 3-6 bullet points with "-". One topic per slide.
+- IMAGE SLIDE: "## Slide Title" when the slide should focus on a visual. Do NOT add image markdown.
+- CLOSING SLIDE: "## Conclusion" or "## Thank You" for the last slide, followed by 1-2 closing bullet points.
+
+Example structure:
+# My Presentation
+A subtitle here
+
+## Introduction
+- Point one
+- Point two
+- Point three
+
+## Key Topic
+- Detail A
+- Detail B
+
+## Thank You
+- Contact info or closing thought
 
 IF the user is asking a question, chatting, or asking for advice (NOT requesting a presentation):
 - Respond naturally as a helpful assistant. You may use markdown freely (headings, bold, lists, code blocks, etc.)
@@ -204,7 +272,7 @@ The user will give you instructions to modify it. Follow this exact output forma
 [full updated markdown here]
 <<<PRESENTATION_END>>>
 
-Follow the same slide type rules (# for title slide, ## for content slides). If the user asks for an entirely new presentation on a different topic, create a fresh one instead.`;
+Follow the same slide type rules (# for title slide only, ## for ALL other slides including the closing slide). Each ## heading starts a new slide — use one ## per slide and keep 3-6 bullet points per slide. If the user asks for an entirely new presentation on a different topic, create a fresh one instead.`;
   };
 
   // --- Evaluar si la respuesta del modelo es una presentación ---
@@ -214,47 +282,50 @@ Follow the same slide type rules (# for title slide, ## for content slides). If 
 
   // --- Enviar mensaje ---
   const sendMessage = async (message, images = []) => {
-    if (!message.trim() && images.length === 0) {
-      console.log("Empty message, ignoring");
-      return;
-    }
+    if (!message.trim() && images.length === 0) return;
 
-    if (!currentChat) {
-      console.error("No current chat selected!");
-      return;
-    }
+    // Block if a selected chat still has its messages loading
+    if (currentChatId && currentChat?.messages === null) return;
 
-    console.log("Sending message:", message);
-    console.log("Current chat:", currentChat);
-
-    // Limpiar el mensaje de referencias base64
     const cleanMessage = message.replace(/\[Imagen adjunta:.*?\]/g, '').trim();
-
     const userMessage = {
       role: 'user',
       content: cleanMessage || 'Crear presentación con estas imágenes',
       timestamp: new Date(),
-      images: images // Guardar las imágenes en el mensaje
+      images: images
     };
 
-    const updatedChat = {
-      ...currentChat,
-      messages: [...currentChat.messages, userMessage]
-    };
+    // Snapshot existing messages before any state mutation
+    const existingMessages = currentChat?.messages ?? [];
+    const firstMessageInChat = existingMessages.length === 0;
 
-    setChats(prev =>
-      prev.map(c => c.id === currentChat.id ? updatedChat : c)
-    );
+    // If no chat is selected, create one now (deferred creation on first message)
+    let activeChatId = currentChatId;
+    if (!activeChatId) {
+      try {
+        const res = await apiFetch('/api/chats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: 'New Chat' })
+        });
+        const data = await res.json();
+        activeChatId = data.chat._id;
+      } catch {
+        activeChatId = 'local_' + Date.now();
+      }
+      setChats(prev => [{ id: activeChatId, title: 'New Chat', messages: [] }, ...prev]);
+      setCurrentChatId(activeChatId);
+    }
+
+    const allMessages = [...existingMessages, userMessage];
+    setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, messages: allMessages } : c));
     setIsLoading(true);
 
     let fullMarkdownResponse = '';
+    let persistConversionId = null;
+    let persistPptxFilename = null;
 
     try {
-      console.log("Fetching from Ollama with streaming...");
-      console.log("Messages to send:", updatedChat.messages.map(msg => ({
-        role: msg.role,
-        content: msg.content
-      })));
       const response = await fetch('http://localhost:11434/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -267,35 +338,23 @@ Follow the same slide type rules (# for title slide, ## for content slides). If 
                 ? buildEditingPrompt(currentMarkdown)
                 : buildSystemPrompt(slideTypes)
             },
-            // Only send role and content to Ollama, strip out other properties
-            ...updatedChat.messages.map(msg => ({
-              role: msg.role,
-              content: msg.content
-            }))
+            ...allMessages.map(msg => ({ role: msg.role, content: msg.content }))
           ],
           stream: true
         })
       });
 
-      console.log("Response received:", response.status, response.statusText);
-
       if (!response.ok) {
         throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
       }
 
-      console.log("Starting to read stream...");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-
-      // Create assistant message for streaming
       let streamingMessageAdded = false;
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          console.log("Stream reading complete");
-          break;
-        }
+        if (done) break;
 
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n').filter(line => line.trim());
@@ -305,30 +364,20 @@ Follow the same slide type rules (# for title slide, ## for content slides). If 
             const json = JSON.parse(line);
             if (json.message?.content) {
               fullMarkdownResponse += json.message.content;
-
               if (!streamingMessageAdded) {
-                const assistantMessage = {
-                  role: 'assistant',
-                  content: fullMarkdownResponse,
-                  timestamp: new Date()
-                };
-                const chatWithResponse = {
-                  ...updatedChat,
-                  messages: [...updatedChat.messages, assistantMessage]
-                };
+                const assistantMessage = { role: 'assistant', content: fullMarkdownResponse, timestamp: new Date() };
                 setChats(prev =>
-                  prev.map(c => c.id === currentChat.id ? chatWithResponse : c)
+                  prev.map(c => c.id === activeChatId
+                    ? { ...c, messages: [...allMessages, assistantMessage] }
+                    : c)
                 );
                 streamingMessageAdded = true;
               } else {
                 setChats(prev =>
                   prev.map(c => {
-                    if (c.id === currentChat.id) {
+                    if (c.id === activeChatId) {
                       const messages = [...c.messages];
-                      messages[messages.length - 1] = {
-                        ...messages[messages.length - 1],
-                        content: fullMarkdownResponse
-                      };
+                      messages[messages.length - 1] = { ...messages[messages.length - 1], content: fullMarkdownResponse };
                       return { ...c, messages };
                     }
                     return c;
@@ -336,104 +385,112 @@ Follow the same slide type rules (# for title slide, ## for content slides). If 
                 );
               }
             }
-          } catch (e) {
-            // Ignore invalid JSON lines
-          }
+          } catch (e) { /* ignore invalid JSON */ }
         }
       }
 
-      console.log("Ollama response complete");
+      if (!fullMarkdownResponse.trim()) throw new Error('No response received from model');
 
-      // Verificar que se recibió una respuesta
-      if (!fullMarkdownResponse.trim()) {
-        throw new Error('No response received from model');
-      }
-
-      // --- Evaluar si la respuesta es una presentación ---
       const isPresentation = isPresentationResponse(fullMarkdownResponse);
-      console.log("Is presentation:", isPresentation);
 
-      // Tag the assistant message with the classification result
+      // Tag the assistant message with classification
       setChats(prev =>
         prev.map(c => {
-          if (c.id === currentChat.id) {
+          if (c.id === activeChatId) {
             const messages = [...c.messages];
-            messages[messages.length - 1] = {
-              ...messages[messages.length - 1],
-              isPresentation
-            };
+            messages[messages.length - 1] = { ...messages[messages.length - 1], isPresentation };
             return { ...c, messages };
           }
           return c;
         })
       );
 
-      if (!isPresentation) {
-        console.log("Response is not a presentation, skipping PPTX conversion.");
-      } else {
-        // --- Enviar Markdown al backend Pandoc ---
+      if (isPresentation) {
         const presentationMarkdown = extractPresentationMarkdown(fullMarkdownResponse);
-        console.log("Converting to PPTX...");
-        console.log("Extracted markdown length:", presentationMarkdown?.length);
-        console.log("Images count:", images.length);
-        console.log("Selected template:", selectedTemplate);
-
         const convertResponse = await fetch('http://localhost:4000/convert', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...getAuthHeaders()
-          },
-          body: JSON.stringify({
-            markdown: presentationMarkdown,
-            images: images,
-            template: selectedTemplate
-          })
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({ markdown: presentationMarkdown, images, template: selectedTemplate })
         });
 
-        console.log("Convert response status:", convertResponse.status, convertResponse.statusText);
-
         if (convertResponse.ok) {
-          const blob = await convertResponse.blob();
-          const filename = `${extractPresentationTitle(presentationMarkdown)}.pptx`;
-          // Convert blob to base64 so it persists as a snapshot in the message
-          const base64 = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.readAsDataURL(blob);
-          });
-          // Attach the PPTX snapshot to the assistant message
+          const { conversionId } = await convertResponse.json();
+          persistConversionId = conversionId;
+          persistPptxFilename = `${extractPresentationTitle(presentationMarkdown)}.pptx`;
           setChats(prev =>
             prev.map(c => {
-              if (c.id === currentChat.id) {
+              if (c.id === activeChatId) {
                 const messages = [...c.messages];
                 messages[messages.length - 1] = {
                   ...messages[messages.length - 1],
-                  pptxBase64: base64,
-                  pptxFilename: filename,
+                  conversionId: persistConversionId,
+                  pptxFilename: persistPptxFilename,
                 };
                 return { ...c, messages };
               }
               return c;
             })
           );
-          setCurrentMarkdown(presentationMarkdown);
-          console.log("PPTX stored as attachment snapshot");
+          setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, markdown: presentationMarkdown } : c));
         } else {
           const errorText = await convertResponse.text();
-          console.error("Convert API error:", convertResponse.status, errorText);
           throw new Error(`Conversion failed: ${convertResponse.status} - ${errorText}`);
+        }
+      }
+
+      // --- Persist both messages to DB ---
+      if (activeChatId && !activeChatId.startsWith('local_')) {
+        const assistantMsgForDB = {
+          role: 'assistant',
+          content: fullMarkdownResponse,
+          timestamp: new Date(),
+          isPresentation,
+          conversionId: persistConversionId,
+          pptxFilename: persistPptxFilename,
+        };
+        try {
+          await apiFetch(`/api/chats/${activeChatId}/messages`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: [userMessage, assistantMsgForDB] })
+          });
+          if (firstMessageInChat) {
+            let newTitle = 'New Chat';
+            try {
+              const titleRes = await fetch('http://localhost:11434/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: selectedModel,
+                  messages: [
+                    { role: 'system', content: 'Generate a concise 3–5 word title summarizing the user\'s request. Reply with ONLY the title, no punctuation, no quotes.' },
+                    { role: 'user', content: userMessage.content }
+                  ],
+                  stream: false
+                })
+              });
+              if (titleRes.ok) {
+                const titleData = await titleRes.json();
+                const generated = titleData.message?.content?.trim().slice(0, 50);
+                if (generated) newTitle = generated;
+              }
+            } catch { /* keep default */ }
+            await apiFetch(`/api/chats/${activeChatId}/title`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title: newTitle })
+            });
+            setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, title: newTitle } : c));
+          }
+        } catch (persistErr) {
+          console.warn('Failed to persist messages:', persistErr);
         }
       }
 
     } catch (error) {
       console.error("❌ Error in sendMessage:", error);
       alert(`Error: ${error.message}`);
-
-      // Keep the user message visible even if there's an error
-      setChats(prev =>
-        prev.map(c => c.id === currentChat.id ? updatedChat : c)
-      );
+      setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, messages: allMessages } : c));
     } finally {
       setIsLoading(false);
     }
@@ -442,9 +499,7 @@ Follow the same slide type rules (# for title slide, ## for content slides). If 
   // --- Limpiar chat actual ---
   const clearChat = () => {
     if (!currentChat) return;
-    const cleared = { ...currentChat, messages: [] };
-    setChats(prev => prev.map(c => c.id === currentChat.id ? cleared : c));
-    setCurrentMarkdown(null);
+    setChats(prev => prev.map(c => c.id === currentChat.id ? { ...c, messages: [], markdown: null } : c));
   };
 
   // Show loading spinner while checking authentication
@@ -479,22 +534,52 @@ Follow the same slide type rules (# for title slide, ## for content slides). If 
           </Button>
         </div>
         <Separator className="bg-border mx-3 w-auto" />
-        <ScrollArea className="flex-1 px-2 py-2">
+        <div className="flex-1 overflow-y-auto px-2 py-2">
           {chats.map(chat => (
-            <button
+            <div
               key={chat.id}
               onClick={() => setCurrentChatId(chat.id)}
+              onMouseEnter={() => setHoveredChatId(chat.id)}
+              onMouseLeave={() => setHoveredChatId(null)}
               className={cn(
-                "w-full text-left px-3 py-2 rounded-lg text-sm truncate transition-colors border-l-2",
+                "flex items-center gap-1 w-full min-w-0 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors",
                 chat.id === currentChatId
-                  ? "bg-primary/10 text-foreground font-medium border-l-primary"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground border-l-transparent"
+                  ? "bg-primary/25 text-foreground font-medium"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
               )}
             >
-              {chat.title}
-            </button>
+              <span className="flex-1 truncate min-w-0">{chat.title}</span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    onClick={(e) => e.stopPropagation()}
+                    className={cn(
+                      "shrink-0 h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:bg-accent transition-all focus-visible:ring-0 focus-visible:outline-none",
+                      hoveredChatId === chat.id || chat.id === currentChatId
+                        ? "opacity-100"
+                        : "opacity-0 pointer-events-none"
+                    )}
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="right" align="start" className="shadow-sm border-border/50" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem onClick={() => renameChat(chat.id, chat.title)}>
+                    <Pencil className="h-3.5 w-3.5 mr-2" />
+                    Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => deleteChat(chat.id)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           ))}
-        </ScrollArea>
+        </div>
         <Separator className="bg-border mx-3 w-auto" />
         <div className="px-3 py-3 shrink-0">
           <ModelSelector
@@ -508,7 +593,7 @@ Follow the same slide type rules (# for title slide, ## for content slides). If 
       {/* MAIN */}
       <div className="flex flex-col flex-1 min-w-0">
         <header className="flex items-center justify-between h-14 px-6 bg-card border-b border-border shrink-0">
-          <span className="text-sm font-semibold text-foreground">{currentChat?.title || 'Slidecraft'}</span>
+          <span className="text-sm font-semibold text-foreground truncate max-w-xs" title={currentChat?.title}>{currentChat?.title || 'Slidecraft'}</span>
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
@@ -523,7 +608,12 @@ Follow the same slide type rules (# for title slide, ## for content slides). If 
         </header>
 
         <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-6">
-          {(!currentChat || currentChat.messages.length === 0) && (
+          {currentChat?.messages === null && (
+            <div className="m-auto">
+              <div className="h-6 w-6 rounded-full border-2 border-border border-t-primary animate-spin" />
+            </div>
+          )}
+          {(!currentChat || currentChat.messages?.length === 0) && (
             <div className="m-auto text-center max-w-md py-12 select-none">
               <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20 mb-5 shadow-[0_0_24px_hsl(217_91%_60%/0.15)]">
                 <svg className="h-7 w-7 text-primary" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
@@ -535,14 +625,14 @@ Follow the same slide type rules (# for title slide, ## for content slides). If 
               <p className="text-muted-foreground">Describe your presentation and let AI build it for you</p>
             </div>
           )}
-          {currentChat?.messages.map((msg, i) => (
+          {currentChat?.messages?.map((msg, i) => (
             <ChatMessage
               key={i}
               message={msg}
               isStreaming={isLoading && i === currentChat.messages.length - 1 && msg.role === 'assistant'}
             />
           ))}
-          {isLoading && currentChat?.messages.at(-1)?.role !== 'assistant' && (
+          {isLoading && currentChat?.messages?.at(-1)?.role !== 'assistant' && (
             <ChatMessage message={{ role: 'assistant', content: '', timestamp: new Date(), isLoading: true }} />
           )}
           <div ref={messagesEndRef} />
@@ -555,7 +645,7 @@ Follow the same slide type rules (# for title slide, ## for content slides). If 
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setCurrentMarkdown(null)}
+                onClick={() => setChats(prev => prev.map(c => c.id === currentChatId ? { ...c, markdown: null } : c))}
                 className="h-6 px-2 text-xs text-primary/80 border border-primary/40 hover:bg-primary/20"
               >
                 New Presentation
