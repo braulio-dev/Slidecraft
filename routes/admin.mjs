@@ -1,6 +1,7 @@
 import express from 'express';
 import User from '../models/User.mjs';
 import Conversion from '../models/Conversion.mjs';
+import Chat from '../models/Chat.mjs';
 import { authenticateToken, requireAdmin } from '../middleware/auth.mjs';
 
 const router = express.Router();
@@ -150,8 +151,9 @@ router.delete('/users/:id', async (req, res) => {
       return res.status(400).json({ error: 'Cannot delete your own account' });
     }
 
-    // Delete user's presentations
+    // Delete user's presentations and chat history
     await Conversion.deleteMany({ userId: id });
+    await Chat.deleteMany({ userId: id });
 
     // Delete user
     await User.findByIdAndDelete(id);
