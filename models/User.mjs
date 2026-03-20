@@ -30,7 +30,14 @@ const userSchema = new mongoose.Schema({
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
-  }
+  },
+  providerSettings: [{
+    _id: false,
+    id:      { type: String, required: true },
+    enabled: { type: Boolean, default: false },
+    apiKey:  { type: String, default: '' },
+    baseUrl: { type: String, default: '' }
+  }]
 });
 
 // Hash password before saving
