@@ -19,9 +19,11 @@ import SlideType from "../models/SlideType.mjs";
 import authRoutes from "../routes/auth.mjs";
 import adminRoutes from "../routes/admin.mjs";
 import chatRoutes from "../routes/chats.mjs";
+import providersRoutes from "../routes/providers.mjs";
 
 // Import middleware
 import { authenticateToken } from "../middleware/auth.mjs";
+import { proxyChat } from "./chatProxy.mjs";
 
 const app = express();
 const PORT = 4000;
@@ -44,6 +46,8 @@ app.use('/thumbnails', express.static(path.resolve(__dirname, '../public/thumbna
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/chats", chatRoutes);
+app.use("/api/providers", providersRoutes);
+app.post("/api/chat", authenticateToken, proxyChat);
 
 // Endpoint para listar plantillas disponibles
 app.get("/api/templates", (req, res) => {

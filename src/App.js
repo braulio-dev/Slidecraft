@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ProvidersProvider, useProviders } from './context/ProvidersContext';
 import Login from './components/Login';
 import UserMenu from './components/UserMenu';
 import AdminPanel from './components/AdminPanel';
+import SettingsPanel from './components/SettingsPanel';
 import ChatMessage from './components/ChatMessage';
 import ChatInput from './components/ChatInput';
 import ModelSelector from './components/ModelSelector';
@@ -10,7 +12,7 @@ import TemplateSelector from './components/TemplateSelector';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Plus, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { Plus, MoreHorizontal, Pencil, Trash2, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Normalize a message from DB shape to frontend shape
@@ -30,12 +32,13 @@ function normalizeMessage(m) {
 // Main App Component with Authentication
 function MainApp() {
   const { isAuthenticated, loading, getAuthHeaders } = useAuth();
+  const { getEnabledModels, fetchModelsForProvider, providers } = useProviders();
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [chats, setChats] = useState([]); // [{id, title, messages: []}]
   const [currentChatId, setCurrentChatId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('qwen2.5:7b-instruct');
-  const [availableModels, setAvailableModels] = useState([]);
+  const [selectedModelValue, setSelectedModelValue] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('blank_default.pptx');
   const [slideTypes, setSlideTypes] = useState([]);
   const [hoveredChatId, setHoveredChatId] = useState(null);
@@ -110,27 +113,19 @@ function MainApp() {
       .catch(() => {});
   }, []);
 
-  // --- Cargar modelos disponibles ---
-  useEffect(() => { fetchAvailableModels(); }, []);
-
-  const fetchAvailableModels = async () => {
-    try {
-      const response = await fetch('http://localhost:11434/api/tags');
-      const data = await response.json();
-      if (data.models && data.models.length > 0) {
-        const modelNames = data.models.map(model => model.name);
-        setAvailableModels(modelNames);
-        // Set the first available model as selected if current model doesn't exist
-        if (!modelNames.includes(selectedModel) && modelNames.length > 0) {
-          setSelectedModel(modelNames[0]);
-        }
-      } else {
-        setAvailableModels(['qwen2.5:7b-instruct']);
-      }
-    } catch {
-      setAvailableModels(['qwen2.5:7b-instruct']);
+  // --- Auto-load models for enabled providers and auto-select first available ---
+  useEffect(() => {
+    for (const p of providers) {
+      if (p.enabled) fetchModelsForProvider(p.id);
     }
-  };
+  }, [providers, fetchModelsForProvider]);
+
+  useEffect(() => {
+    const options = getEnabledModels();
+    if (options.length > 0 && !options.find(o => o.value === selectedModelValue)) {
+      setSelectedModelValue(options[0].value);
+    }
+  }, [getEnabledModels, selectedModelValue]);
 
   // --- Load chat list from DB on login ---
   useEffect(() => {
@@ -210,7 +205,7 @@ function MainApp() {
 
 You MUST always respond in the same language the user writes in. If the user writes in Spanish, respond in Spanish. If in French, respond in French. Match the user's language exactly — including the brief summary before the delimiter and all slide content inside the delimiters.
 
-MODE 1 — CREATE A PRESENTATION: Use this mode when the user's message contains words like "make", "create", "generate", "build", "give me", "produce" (or their equivalents in any language, e.g. "hacer", "crear", "generar", "hazme", "crea", "genera" in Spanish; "faire", "créer", "génère" in French; etc.) alongside "presentation", "slides", "deck", "slideshow", or their equivalents ("presentación", "diapositivas" in Spanish; "présentation", "diapositives" in French; etc.). The topic does NOT matter — even if they ask for a presentation about how to make a presentation, you must create one. When in doubt, default to this mode.
+MODE 1 — CREATE A PRESENTATION: Use this mode ONLY when the user explicitly asks you to make, create, generate, build, or produce a presentation, slides, deck, or slideshow (or equivalents in any language, e.g. "hacer una presentación", "crea diapositivas", "génère une présentation"). BOTH a creation verb AND a presentation noun must be present. A question about a topic (e.g. "how do you make a cake?", "what is photosynthesis?") is MODE 2 even if a presentation could be made about it. When in doubt, default to MODE 2.
 
 IF you are in MODE 1:
 - First write a brief, natural summary (1-3 sentences) describing what the presentation covers and its key points. This goes BEFORE the delimiter.
@@ -277,7 +272,9 @@ The user will give you instructions to modify it. Follow this exact output forma
 [full updated markdown here]
 <<<PRESENTATION_END>>>
 
-Follow the same slide type rules (# for title slide only, ## for ALL other slides including the closing slide). Each ## heading starts a new slide — use one ## per slide and keep 3-6 bullet points per slide. If the user asks for an entirely new presentation on a different topic, create a fresh one instead.`;
+Follow the same slide type rules (# for title slide only, ## for ALL other slides including the closing slide). Each ## heading starts a new slide — use one ## per slide and keep 3-6 bullet points per slide. If the user asks for an entirely new presentation on a different topic, create a fresh one instead.
+
+IMPORTANT — TEMPLATES AND VISUAL DESIGN: The application handles all visual styling (templates, colors, fonts, themes) automatically. You never see or control templates. If the user mentions "template", "theme", "design", "style", "color scheme", or anything about appearance, simply re-output the exact same presentation markdown unchanged wrapped in the delimiters — the app will apply whatever template they have selected.`;
   };
 
   // --- Evaluar si la respuesta del modelo es una presentación ---
@@ -330,12 +327,15 @@ Follow the same slide type rules (# for title slide only, ## for ALL other slide
     let persistConversionId = null;
     let persistPptxFilename = null;
 
+    const [provider, model] = selectedModelValue.split('::');
+
     try {
-      const response = await fetch('http://localhost:11434/api/chat', {
+      const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: selectedModel,
+          provider,
+          model,
           messages: [
             {
               role: "system",
@@ -462,11 +462,12 @@ Follow the same slide type rules (# for title slide only, ## for ALL other slide
           if (firstMessageInChat) {
             let newTitle = 'New Chat';
             try {
-              const titleRes = await fetch('http://localhost:11434/api/chat', {
+              const titleRes = await apiFetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  model: selectedModel,
+                  provider,
+                  model,
                   messages: [
                     { role: 'system', content: 'Generate a concise 3–5 word title summarizing the user\'s request. Reply with ONLY the title, no punctuation, no quotes.' },
                     { role: 'user', content: userMessage.content }
@@ -586,12 +587,21 @@ Follow the same slide type rules (# for title slide only, ## for ALL other slide
           ))}
         </div>
         <Separator className="bg-border mx-3 w-auto" />
-        <div className="px-3 py-3 shrink-0">
+        <div className="px-3 py-3 shrink-0 flex flex-col gap-2">
           <ModelSelector
-            models={availableModels}
-            selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
+            options={getEnabledModels()}
+            selectedModel={selectedModelValue}
+            onModelChange={setSelectedModelValue}
           />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowSettings(true)}
+            className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground text-xs"
+          >
+            <Settings className="h-3.5 w-3.5" />
+            Provider Settings
+          </Button>
         </div>
       </aside>
 
@@ -665,15 +675,18 @@ Follow the same slide type rules (# for title slide only, ## for ALL other slide
       </div>
 
       <AdminPanel open={showAdminPanel} onClose={() => setShowAdminPanel(false)} />
+      <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   );
 }
 
-// App wrapper with AuthProvider
+// App wrapper with AuthProvider and ProvidersProvider
 function App() {
   return (
     <AuthProvider>
-      <MainApp />
+      <ProvidersProvider>
+        <MainApp />
+      </ProvidersProvider>
     </AuthProvider>
   );
 }
