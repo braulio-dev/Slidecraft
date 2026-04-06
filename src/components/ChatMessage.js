@@ -12,8 +12,9 @@ const PRESENTATION_START = '<<<PRESENTATION_START>>>';
 const PRESENTATION_END = '<<<PRESENTATION_END>>>';
 
 function PresentationCard({ base64, filename, conversionId }) {
-  const { getAuthHeaders } = useAuth();
+  const { authFetch } = useAuth();
   const [pdfLoading, setPdfLoading] = useState(false);
+  const isSessionError = (err) => err?.message === 'SESSION_EXPIRED';
 
   const displayName = filename ? filename.replace(/\.[^.]+$/, '') : 'presentation';
 
@@ -23,7 +24,7 @@ function PresentationCard({ base64, filename, conversionId }) {
       const res = await fetch(base64);
       return res.blob();
     }
-    const res = await fetch(`http://localhost:4000/download/${conversionId}`, { headers: getAuthHeaders() });
+    const res = await authFetch(`http://localhost:4000/download/${conversionId}`);
     if (!res.ok) throw new Error('Failed to fetch presentation from server');
     return res.blob();
   };
@@ -40,7 +41,7 @@ function PresentationCard({ base64, filename, conversionId }) {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert('Download failed: ' + err.message);
+      if (!isSessionError(err)) alert('Download failed: ' + err.message);
     }
   };
 
@@ -53,9 +54,9 @@ function PresentationCard({ base64, filename, conversionId }) {
         reader.onloadend = () => resolve(reader.result);
         reader.readAsDataURL(blob);
       });
-      const response = await fetch('http://localhost:4000/convert-to-pdf', {
+      const response = await authFetch('http://localhost:4000/convert-to-pdf', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pptxBase64, filename }),
       });
       if (!response.ok) {
@@ -72,7 +73,7 @@ function PresentationCard({ base64, filename, conversionId }) {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert('PDF conversion failed: ' + err.message);
+      if (!isSessionError(err)) alert('PDF conversion failed: ' + err.message);
     } finally {
       setPdfLoading(false);
     }

@@ -29,7 +29,7 @@ import {
 import { AlertCircle, KeyRound, Trash2, UserPlus, Users, Shield, BarChart3, Presentation } from 'lucide-react';
 
 const AdminPanel = ({ open, onClose }) => {
-  const { getAuthHeaders } = useAuth();
+  const { authFetch } = useAuth();
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -41,35 +41,34 @@ const AdminPanel = ({ open, onClose }) => {
     password: '',
     role: 'employee'
   });
+  const isSessionError = (err) => err?.message === 'SESSION_EXPIRED';
 
   const fetchUsers = useCallback(async () => {
     try {
-      const response = await fetch('http://localhost:4000/api/admin/users', {
-        headers: getAuthHeaders()
-      });
+      const response = await authFetch('http://localhost:4000/api/admin/users');
       if (!response.ok) throw new Error('Failed to fetch users');
       const data = await response.json();
       setUsers(data.users);
       setLoading(false);
     } catch (err) {
-      setError(err.message);
-      setLoading(false);
+      if (!isSessionError(err)) {
+        setError(err.message);
+        setLoading(false);
+      }
     }
-  }, [getAuthHeaders]);
+  }, [authFetch]);
 
   const fetchStats = useCallback(async () => {
     try {
-      const response = await fetch('http://localhost:4000/api/admin/stats', {
-        headers: getAuthHeaders()
-      });
+      const response = await authFetch('http://localhost:4000/api/admin/stats');
       if (response.ok) {
         const data = await response.json();
         setStats(data.stats);
       }
     } catch (err) {
-      console.error('Failed to fetch stats:', err);
+      if (!isSessionError(err)) console.error('Failed to fetch stats:', err);
     }
-  }, [getAuthHeaders]);
+  }, [authFetch]);
 
   useEffect(() => {
     if (open) {
@@ -82,9 +81,9 @@ const AdminPanel = ({ open, onClose }) => {
     e.preventDefault();
     setError('');
     try {
-      const response = await fetch('http://localhost:4000/api/admin/users', {
+      const response = await authFetch('http://localhost:4000/api/admin/users', {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
       const data = await response.json();
@@ -94,16 +93,15 @@ const AdminPanel = ({ open, onClose }) => {
       fetchUsers();
       fetchStats();
     } catch (err) {
-      setError(err.message);
+      if (!isSessionError(err)) setError(err.message);
     }
   };
 
   const handleDeleteUser = async (userId) => {
     if (!window.confirm('Are you sure you want to delete this user? All their presentations will be deleted.')) return;
     try {
-      const response = await fetch(`http://localhost:4000/api/admin/users/${userId}`, {
+      const response = await authFetch(`http://localhost:4000/api/admin/users/${userId}`, {
         method: 'DELETE',
-        headers: getAuthHeaders()
       });
       if (!response.ok) {
         const data = await response.json();
@@ -112,7 +110,7 @@ const AdminPanel = ({ open, onClose }) => {
       fetchUsers();
       fetchStats();
     } catch (err) {
-      setError(err.message);
+      if (!isSessionError(err)) setError(err.message);
     }
   };
 
@@ -121,16 +119,16 @@ const AdminPanel = ({ open, onClose }) => {
     if (!newPassword) return;
     if (newPassword.length < 6) { setError('Password must be at least 6 characters'); return; }
     try {
-      const response = await fetch(`http://localhost:4000/api/auth/change-password/${userId}`, {
+      const response = await authFetch(`http://localhost:4000/api/auth/change-password/${userId}`, {
         method: 'PUT',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newPassword })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to change password');
       alert('Password changed successfully');
     } catch (err) {
-      setError(err.message);
+      if (!isSessionError(err)) setError(err.message);
     }
   };
 

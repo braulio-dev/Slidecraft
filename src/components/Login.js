@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Info } from 'lucide-react';
 
 const PARTICLE_COUNT = 18;
 const COLORS = ['rgba(59,130,246,', 'rgba(37,99,235,', 'rgba(96,165,250,', 'rgba(29,78,216,'];
@@ -140,7 +141,27 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const [infoMessage, setInfoMessage] = useState('');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { login, isAuthenticated, sessionExpired, acknowledgeSessionExpiration } = useAuth();
+  const from = location.state?.from?.pathname || '/';
+  const redirectReason = location.state?.reason;
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate(from, { replace: true });
+    }
+  }, [isAuthenticated, navigate, from]);
+
+  useEffect(() => {
+    if (sessionExpired || redirectReason === 'expired') {
+      setInfoMessage('Tu sesión expiró. Inicia sesión nuevamente para continuar.');
+      acknowledgeSessionExpiration();
+    } else {
+      setInfoMessage('');
+    }
+  }, [sessionExpired, redirectReason, acknowledgeSessionExpiration]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -151,6 +172,8 @@ const Login = () => {
 
     if (!result.success) {
       setError(result.error || 'Login failed. Please try again.');
+    } else {
+      navigate(from, { replace: true });
     }
 
     setLoading(false);
@@ -177,6 +200,12 @@ const Login = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {infoMessage && (
+              <Alert className="bg-blue-50 text-blue-900 border-blue-200">
+                <Info className="h-4 w-4" />
+                <AlertDescription>{infoMessage}</AlertDescription>
+              </Alert>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="username">Username</Label>
               <Input

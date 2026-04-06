@@ -15,9 +15,10 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   // Logout function - defined early so it can be used by verifyToken
-  const logout = useCallback(async () => {
+  const logout = useCallback(async ({ reason = 'manual' } = {}) => {
     try {
       if (token) {
         await fetch('http://localhost:4000/api/auth/logout', {
@@ -35,8 +36,25 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('user');
       setToken(null);
       setUser(null);
+      setSessionExpired(reason === 'expired');
+      setLoading(false);
     }
   }, [token]);
+
+  const acknowledgeSessionExpiration = useCallback(() => setSessionExpired(false), []);
+
+  const authFetch = useCallback(async (url, options = {}) => {
+    const headers = {
+      ...(options.headers || {}),
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    const response = await fetch(url, { ...options, headers });
+    if ([401, 403, 419, 440].includes(response.status)) {
+      await logout({ reason: 'expired' });
+      throw new Error('SESSION_EXPIRED');
+    }
+    return response;
+  }, [token, logout]);
 
   // Verify token with backend
   const verifyToken = useCallback(async (tokenToVerify) => {
@@ -50,13 +68,14 @@ export const AuthProvider = ({ children }) => {
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
+        setSessionExpired(false);
       } else {
         // Token invalid, clear auth
-        logout();
+        logout({ reason: 'expired' });
       }
     } catch (err) {
       console.error('Token verification error:', err);
-      logout();
+      logout({ reason: 'expired' });
     } finally {
       setLoading(false);
     }
@@ -100,6 +119,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('user', JSON.stringify(data.user));
       setToken(data.token);
       setUser(data.user);
+      setSessionExpired(false);
 
       return { success: true };
     } catch (err) {
@@ -129,9 +149,12 @@ export const AuthProvider = ({ children }) => {
     error,
     login,
     logout,
+    authFetch,
     getAuthHeaders,
     isAdmin,
-    isAuthenticated: !!user
+    isAuthenticated: !!user,
+    sessionExpired,
+    acknowledgeSessionExpiration
   };
 
   return (

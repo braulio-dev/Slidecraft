@@ -4,17 +4,18 @@ import { useAuth } from './AuthContext';
 const ProvidersContext = createContext(null);
 
 export function ProvidersProvider({ children }) {
-  const { isAuthenticated, getAuthHeaders } = useAuth();
+  const { isAuthenticated, authFetch } = useAuth();
   const [providers, setProviders] = useState([]);
   const [modelsCache, setModelsCache] = useState({});  // { providerId: string[] }
   const [loadingModels, setLoadingModels] = useState({}); // { providerId: boolean }
   const [loadingProviders, setLoadingProviders] = useState(false);
+  const isSessionError = (err) => err?.message === 'SESSION_EXPIRED';
 
   const apiFetch = useCallback((path, opts = {}) =>
-    fetch(`http://localhost:4000${path}`, {
+    authFetch(`http://localhost:4000${path}`, {
       ...opts,
-      headers: { ...getAuthHeaders(), ...(opts.headers || {}) }
-    }), [getAuthHeaders]);
+      headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }
+    }), [authFetch]);
 
   const fetchProviders = useCallback(async () => {
     setLoadingProviders(true);
@@ -23,7 +24,9 @@ export function ProvidersProvider({ children }) {
       const data = await res.json();
       if (data.providers) setProviders(data.providers);
     } catch (err) {
-      console.warn('Failed to load providers:', err);
+      if (!isSessionError(err)) {
+        console.warn('Failed to load providers:', err);
+      }
     } finally {
       setLoadingProviders(false);
     }
@@ -71,7 +74,9 @@ export function ProvidersProvider({ children }) {
       setModelsCache(prev => ({ ...prev, [id]: models }));
       return models;
     } catch (err) {
-      console.warn(`Failed to fetch models for ${id}:`, err);
+      if (!isSessionError(err)) {
+        console.warn(`Failed to fetch models for ${id}:`, err);
+      }
       return [];
     } finally {
       setLoadingModels(prev => ({ ...prev, [id]: false }));

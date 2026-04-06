@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ProvidersProvider, useProviders } from './context/ProvidersContext';
 import Login from './components/Login';
+import PrivateRoute from './routes/PrivateRoute';
 import UserMenu from './components/UserMenu';
 import AdminPanel from './components/AdminPanel';
 import SettingsPanel from './components/SettingsPanel';
@@ -31,7 +33,7 @@ function normalizeMessage(m) {
 
 // Main App Component with Authentication
 function MainApp() {
-  const { isAuthenticated, loading, getAuthHeaders } = useAuth();
+  const { authFetch } = useAuth();
   const { getEnabledModels, fetchModelsForProvider, providers } = useProviders();
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -52,12 +54,11 @@ function MainApp() {
   const currentChat = chats.find(c => c.id === currentChatId);
   const currentMarkdown = currentChat?.markdown ?? null;
 
-  // Authenticated fetch helper — stable as long as getAuthHeaders is stable
+  // Authenticated fetch helper — maneja expiración de sesión
   const apiFetch = useCallback((path, opts = {}) =>
-    fetch(`http://localhost:4000${path}`, {
-      ...opts,
-      headers: { ...getAuthHeaders(), ...(opts.headers || {}) }
-    }), [getAuthHeaders]);
+    authFetch(`http://localhost:4000${path}`, opts), [authFetch]);
+
+  const isSessionError = useCallback((err) => err?.message === 'SESSION_EXPIRED', []);
 
   // --- Crear nuevo chat ---
   // Just clears selection — the actual DB record is created on first message send
@@ -75,10 +76,10 @@ function MainApp() {
       try {
         await apiFetch(`/api/chats/${chatId}`, { method: 'DELETE' });
       } catch (err) {
-        console.warn('Failed to delete chat from DB:', err);
+        if (!isSessionError(err)) console.warn('Failed to delete chat from DB:', err);
       }
     }
-  }, [apiFetch, currentChatId]);
+  }, [apiFetch, currentChatId, isSessionError]);
 
   // --- Renombrar chat ---
   const renameChat = useCallback(async (chatId, currentTitle) => {
@@ -94,10 +95,10 @@ function MainApp() {
           body: JSON.stringify({ title: trimmed })
         });
       } catch (err) {
-        console.warn('Failed to rename chat:', err);
+        if (!isSessionError(err)) console.warn('Failed to rename chat:', err);
       }
     }
-  }, [apiFetch]);
+  }, [apiFetch, isSessionError]);
 
   // --- Scroll automático ---
   const scrollToBottom = () => {
@@ -107,11 +108,11 @@ function MainApp() {
 
   // --- Cargar slide types desde backend ---
   useEffect(() => {
-    fetch('http://localhost:4000/api/slide-types')
+    apiFetch('/api/slide-types')
       .then(res => res.json())
       .then(data => { if (data.slideTypes) setSlideTypes(data.slideTypes); })
-      .catch(() => {});
-  }, []);
+      .catch((err) => { if (!isSessionError(err)) console.warn('Failed to load slide types', err); });
+  }, [apiFetch, isSessionError]);
 
   // --- Auto-load models for enabled providers and auto-select first available ---
   useEffect(() => {
@@ -129,7 +130,6 @@ function MainApp() {
 
   // --- Load chat list from DB on login ---
   useEffect(() => {
-    if (!isAuthenticated) return;
     async function loadChats() {
       try {
         const res = await apiFetch('/api/chats');
@@ -143,12 +143,12 @@ function MainApp() {
           return;
         }
       } catch (err) {
-        console.warn('Failed to load chats:', err);
+        if (!isSessionError(err)) console.warn('Failed to load chats:', err);
       }
       // No chats yet — stay in empty state
     }
     loadChats();
-  }, [isAuthenticated, apiFetch]);
+  }, [apiFetch, isSessionError]);
 
   // --- Lazy-load messages when switching to a chat that hasn't been fetched yet ---
   useEffect(() => {
@@ -167,12 +167,12 @@ function MainApp() {
           ));
         }
       } catch (err) {
-        console.warn('Failed to load messages:', err);
+        if (!isSessionError(err)) console.warn('Failed to load messages:', err);
         setChats(prev => prev.map(c => c.id === currentChatId ? { ...c, messages: [] } : c));
       }
     }
     loadMessages();
-  }, [currentChatId, apiFetch]);
+  }, [currentChatId, apiFetch, isSessionError]);
 
   const PRESENTATION_START = '<<<PRESENTATION_START>>>';
   const PRESENTATION_END = '<<<PRESENTATION_END>>>';
@@ -412,9 +412,9 @@ IMPORTANT — TEMPLATES AND VISUAL DESIGN: The application handles all visual st
 
       if (isPresentation) {
         const presentationMarkdown = extractPresentationMarkdown(fullMarkdownResponse);
-        const convertResponse = await fetch('http://localhost:4000/convert', {
+        const convertResponse = await authFetch('http://localhost:4000/convert', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ markdown: presentationMarkdown, images, template: selectedTemplate })
         });
 
@@ -489,14 +489,16 @@ IMPORTANT — TEMPLATES AND VISUAL DESIGN: The application handles all visual st
             setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, title: newTitle } : c));
           }
         } catch (persistErr) {
-          console.warn('Failed to persist messages:', persistErr);
+          if (!isSessionError(persistErr)) console.warn('Failed to persist messages:', persistErr);
         }
       }
 
     } catch (error) {
-      console.error("❌ Error in sendMessage:", error);
-      alert(`Error: ${error.message}`);
-      setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, messages: allMessages } : c));
+      if (!isSessionError(error)) {
+        console.error("❌ Error in sendMessage:", error);
+        alert(`Error: ${error.message}`);
+        setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, messages: allMessages } : c));
+      }
     } finally {
       setIsLoading(false);
     }
@@ -507,20 +509,6 @@ IMPORTANT — TEMPLATES AND VISUAL DESIGN: The application handles all visual st
     if (!currentChat) return;
     setChats(prev => prev.map(c => c.id === currentChat.id ? { ...c, messages: [], markdown: null } : c));
   };
-
-  // Show loading spinner while checking authentication
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 rounded-full border-4 border-border border-t-primary animate-spin" />
-      </div>
-    );
-  }
-
-  // Show login if not authenticated
-  if (!isAuthenticated) {
-    return <Login />;
-  }
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -681,11 +669,26 @@ IMPORTANT — TEMPLATES AND VISUAL DESIGN: The application handles all visual st
 }
 
 // App wrapper with AuthProvider and ProvidersProvider
+function AppRoutes() {
+  const { isAuthenticated } = useAuth();
+  return (
+    <Routes>
+      <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
+      <Route element={<PrivateRoute />}>
+        <Route path="/" element={<MainApp />} />
+      </Route>
+      <Route path="*" element={<Navigate to={isAuthenticated ? '/' : '/login'} replace />} />
+    </Routes>
+  );
+}
+
 function App() {
   return (
     <AuthProvider>
       <ProvidersProvider>
-        <MainApp />
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
       </ProvidersProvider>
     </AuthProvider>
   );
